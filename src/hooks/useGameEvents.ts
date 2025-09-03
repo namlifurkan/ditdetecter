@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { GameEvent, GameState, Player, PlayerRole } from '@/types/game';
 
 interface GameEventData {
@@ -311,6 +311,7 @@ export function useGameEvents() {
     return () => {
       disconnect();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Fetch initial game state (first try sessionStorage, then API)

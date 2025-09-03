@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { ROUND_CONFIGS } from '@/lib/game-config';
 
 interface RoundComponentProps {
@@ -24,25 +24,14 @@ export default function RoundComponent({ roundNumber, timeLeft, playerId }: Roun
   }, [roundNumber]);
 
   const roundConfig = ROUND_CONFIGS.find(r => r.roundNumber === roundNumber);
-  
-  if (!roundConfig) {
-    return (
-      <div className="min-h-screen flex items-center justify-center p-4">
-        <div className="text-center text-white">
-          <h2 className="text-2xl font-bold mb-4">Invalid Round</h2>
-          <p className="text-gray-300">Round {roundNumber} not found.</p>
-        </div>
-      </div>
-    );
-  }
 
   const minutes = Math.floor(timeLeft / 60);
   const seconds = timeLeft % 60;
   const isTimeRunningOut = timeLeft <= 300; // 5 minutes
   const characterCount = content.length;
-  const isOverLimit = characterCount > roundConfig.maxLength;
+  const isOverLimit = roundConfig ? characterCount > roundConfig.maxLength : false;
 
-  const handleSubmit = async () => {
+  const handleSubmit = useCallback(async () => {
     if (!content.trim() || isOverLimit || hasSubmitted) return;
 
     setIsSubmitting(true);
@@ -75,14 +64,25 @@ export default function RoundComponent({ roundNumber, timeLeft, playerId }: Roun
     } finally {
       setIsSubmitting(false);
     }
-  };
+  }, [roundNumber, content, isOverLimit, hasSubmitted]);
 
   // Auto-submit when time runs out
   useEffect(() => {
     if (timeLeft <= 0 && content.trim() && !hasSubmitted && !isSubmitting) {
       handleSubmit();
     }
-  }, [timeLeft, content, hasSubmitted, isSubmitting]);
+  }, [timeLeft, content, hasSubmitted, isSubmitting, handleSubmit]);
+
+  if (!roundConfig) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4">
+        <div className="text-center text-white">
+          <h2 className="text-2xl font-bold mb-4">Invalid Round</h2>
+          <p className="text-gray-300">Round {roundNumber} not found.</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4">
