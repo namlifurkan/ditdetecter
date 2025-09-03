@@ -109,9 +109,9 @@ class GameManager extends EventEmitter {
         return null; // Admin slot already taken
       }
 
-      // Check if name is already taken by regular players
-      if (this.gameState.players.some(p => p.name.toLowerCase() === name.toLowerCase())) {
-        return null; // Name already taken
+      // Check if name is already taken by regular players, but exclude our own session  
+      if (this.gameState.players.some(p => p.name.toLowerCase() === name.toLowerCase() && p.id !== playerId)) {
+        return null; // Name already taken by someone else
       }
 
       const adminPlayer: Player = {
@@ -138,10 +138,16 @@ class GameManager extends EventEmitter {
       return null; // Game is full
     }
 
-    // Check if name is already taken (including admin)
-    if (this.gameState.players.some(p => p.name.toLowerCase() === name.toLowerCase()) ||
-        (this.gameState.adminPlayer && this.gameState.adminPlayer.name.toLowerCase() === name.toLowerCase())) {
-      return null; // Name already taken
+    // Check if name is already taken (including admin), but exclude our own session
+    const isNameTakenByOthers = this.gameState.players.some(p => 
+      p.name.toLowerCase() === name.toLowerCase() && p.id !== playerId
+    );
+    const isNameTakenByAdmin = this.gameState.adminPlayer && 
+      this.gameState.adminPlayer.name.toLowerCase() === name.toLowerCase() && 
+      this.gameState.adminPlayer.id !== playerId;
+      
+    if (isNameTakenByOthers || isNameTakenByAdmin) {
+      return null; // Name already taken by someone else
     }
 
     const player: Player = {
