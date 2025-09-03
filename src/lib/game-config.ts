@@ -1,12 +1,12 @@
 import { RoundConfig, PlayerRole } from '@/types/game';
 
 export const GAME_CONFIG = {
-  MIN_PLAYERS: 1, // Lowered for testing role assignment
+  MIN_PLAYERS: 8,
   MAX_PLAYERS: 16,
   ROUND_DURATION: 3, // minutes
   VOTING_DURATION: 10, // minutes
   ROLE_REVEAL_DURATION: 2, // minutes
-  LOBBY_AUTO_START_THRESHOLD: 12, // Auto-start with 1 player
+  LOBBY_AUTO_START_THRESHOLD: 12, // Auto-start with 12 players
   LOBBY_MAX_WAIT_TIME: 5, // minutes
 } as const;
 
@@ -116,15 +116,15 @@ export function getRoleDistribution(playerCount: number): Record<PlayerRole, num
     throw new Error(`Maximum ${GAME_CONFIG.MAX_PLAYERS} players allowed`);
   }
 
-  // Base distribution (for 6 players): 2 human, 2 ai_user, 2 troll
+  // Base distribution (for 8 players): 3 human, 3 ai_user, 2 troll
   const baseDistribution = {
-    human: 2,
-    ai_user: 2,
+    human: 3,
+    ai_user: 3,
     troll: 2,
   };
 
   // Add extra roles proportionally for more players
-  const extraPlayers = playerCount - 6;
+  const extraPlayers = playerCount - 8;
   const roles: PlayerRole[] = ['human', 'ai_user', 'troll'];
   
   const distribution = { ...baseDistribution };
