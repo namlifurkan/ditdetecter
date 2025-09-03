@@ -6,7 +6,7 @@ export const GAME_CONFIG = {
   ROUND_DURATION: 3, // minutes
   VOTING_DURATION: 10, // minutes
   ROLE_REVEAL_DURATION: 2, // minutes
-  LOBBY_AUTO_START_THRESHOLD: 12, // Auto-start with 12 players
+  LOBBY_AUTO_START_THRESHOLD: 4, // Auto-start with 12 players
   LOBBY_MAX_WAIT_TIME: 5, // minutes
 } as const;
 
