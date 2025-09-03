@@ -36,10 +36,13 @@ export function getTestRoleDistribution(playerCount: number): Record<PlayerRole,
 
   // Test mode distributions
   if (playerCount === 1) {
-    // Cycle between roles for testing
+    // Always randomize for single player testing
     const roles = ['human', 'ai_user', 'troll'] as const;
-    const randomRole = roles[Math.floor(Math.random() * roles.length)];
-    console.log(`TEST: Assigning ${randomRole} role for single player test`);
+    // Use timestamp to ensure different randomization each game
+    const seed = Date.now() + Math.random() * 1000;
+    const randomIndex = Math.floor(seed % 3);
+    const randomRole = roles[randomIndex];
+    console.log(`TEST: Single player randomization - assigned ${randomRole} role (seed: ${seed})`);
     
     return {
       human: randomRole === 'human' ? 1 : 0,
@@ -49,7 +52,21 @@ export function getTestRoleDistribution(playerCount: number): Record<PlayerRole,
   }
   
   if (playerCount === 2) {
-    return { human: 1, ai_user: 1, troll: 0 };
+    // For 2 players, randomize both roles
+    const roles = ['human', 'ai_user', 'troll'] as const;
+    const seed1 = Date.now() + Math.random() * 1000;
+    const seed2 = seed1 + 17; // Offset for second player
+    
+    const role1 = roles[Math.floor(seed1 % 3)];
+    const role2 = roles[Math.floor(seed2 % 3)];
+    
+    console.log(`TEST: Two player randomization - assigned ${role1} and ${role2} roles`);
+    
+    return {
+      human: (role1 === 'human' ? 1 : 0) + (role2 === 'human' ? 1 : 0),
+      ai_user: (role1 === 'ai_user' ? 1 : 0) + (role2 === 'ai_user' ? 1 : 0),
+      troll: (role1 === 'troll' ? 1 : 0) + (role2 === 'troll' ? 1 : 0),
+    };
   }
   
   if (playerCount === 3) {
@@ -81,15 +98,21 @@ export function assignTestRoles(playerIds: string[]): Record<string, PlayerRole>
     }
   });
 
-  // Shuffle role pool
+  // Shuffle role pool using improved randomization
   for (let i = rolePool.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
+    // Use timestamp and random for better randomization
+    const seed = Date.now() + Math.random() * 1000 + i;
+    const j = Math.floor(seed % (i + 1));
     [rolePool[i], rolePool[j]] = [rolePool[j], rolePool[i]];
   }
 
+  console.log(`TEST: Role pool after shuffle:`, rolePool);
+
   // Assign roles to players
   playerIds.forEach((playerId, index) => {
-    assignments[playerId] = rolePool[index] || 'human';
+    const assignedRole = rolePool[index] || 'human';
+    assignments[playerId] = assignedRole;
+    console.log(`TEST: Assigned ${assignedRole} to player ${index + 1} (${playerId.slice(-8)})`);
   });
 
   return assignments;

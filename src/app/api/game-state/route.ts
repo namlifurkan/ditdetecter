@@ -12,13 +12,15 @@ export async function GET(request: NextRequest) {
     
     let playerRole = null;
     if (playerId) {
-      const player = gameManager.getPlayer(playerId);
+      // Attempt to get or restore player from session
+      const player = gameManager.attemptPlayerRestore(playerId);
+      
       if (player) {
         // Use actual role from player object for presentation
         playerRole = player.role;
-        console.log('ACTUAL ROLE:', playerRole, 'for player', player.name);
+        console.log('GAME STATE API: Found/restored player with role:', playerRole, 'for player', player.name);
       } else {
-        console.log('GAME STATE API: Player not found');
+        console.log('GAME STATE API: Player not found and could not be restored, using random role');
         const roles = ['human', 'ai_user', 'troll'];
         playerRole = roles[Math.floor(Math.random() * roles.length)];
         console.log('RANDOM ROLE NO PLAYER:', playerRole);

@@ -275,149 +275,291 @@ class GameManager extends EventEmitter {
 
   // Game flow management
   startGame(): boolean {
-    if (this.gameState.currentPhase !== 'lobby') return false;
-    if (this.gameState.players.length < this.gameState.minPlayers) return false;
+    try {
+      if (this.gameState.currentPhase !== 'lobby') {
+        console.error(`Cannot start game: current phase is ${this.gameState.currentPhase}`);
+        return false;
+      }
+      
+      if (this.gameState.players.length < this.gameState.minPlayers) {
+        console.error(`Cannot start game: need ${this.gameState.minPlayers} players, have ${this.gameState.players.length}`);
+        return false;
+      }
 
-    // Assign roles randomly (test-aware)
-    // Include admin in role assignment
-    const allPlayers = [...this.gameState.players];
-    if (this.gameState.adminPlayer) {
-      allPlayers.push(this.gameState.adminPlayer);
+      // Assign roles randomly (test-aware)
+      // Include admin in role assignment
+      const allPlayers = [...this.gameState.players];
+      if (this.gameState.adminPlayer) {
+        allPlayers.push(this.gameState.adminPlayer);
+      }
+
+      if (allPlayers.length === 0) {
+        console.error('No players to assign roles to');
+        return false;
+      }
+
+      const playerIds = allPlayers.map(p => p.id);
+      console.log('DEBUG: All player IDs for role assignment:', playerIds);
+
+      // Use test-aware role assignment
+      const roleAssignments = TEST_CONFIG.ENABLED ? assignTestRoles(playerIds) : assignRoles(playerIds);
+      console.log('DEBUG: Role assignments:', roleAssignments);
+
+      // Validate role assignments
+      if (!roleAssignments || Object.keys(roleAssignments).length === 0) {
+        console.error('Failed to generate role assignments');
+        return false;
+      }
+
+      // Assign roles to regular players
+      this.gameState.players.forEach(player => {
+        const assignedRole = roleAssignments[player.id];
+        if (!assignedRole) {
+          console.error(`No role assigned to player ${player.name} (${player.id})`);
+          player.role = 'human'; // Fallback role
+        } else {
+          player.role = assignedRole;
+        }
+        console.log(`DEBUG: Assigned role ${player.role} to player ${player.name}`);
+      });
+
+      // Assign role to admin if exists
+      if (this.gameState.adminPlayer) {
+        const assignedRole = roleAssignments[this.gameState.adminPlayer.id];
+        if (!assignedRole) {
+          console.error(`No role assigned to admin ${this.gameState.adminPlayer.name}`);
+          this.gameState.adminPlayer.role = 'human'; // Fallback role
+        } else {
+          this.gameState.adminPlayer.role = assignedRole;
+        }
+        console.log(`DEBUG: Assigned role ${this.gameState.adminPlayer.role} to admin ${this.gameState.adminPlayer.name}`);
+      }
+
+      this.gameState.currentPhase = 'role_reveal';
+      this.gameState.startedAt = new Date();
+      const config = getGameConfig();
+      this.setPhaseTimer(config.ROLE_REVEAL_DURATION * 60 * 1000); // Convert to milliseconds
+
+      this.emitGameEvent('game_started', {
+        gameState: this.getPublicGameState(),
+        roleAssignments: this.getPlayerRoleAssignments()
+      });
+
+      console.log(`Game started successfully with ${allPlayers.length} players`);
+      this.saveGameState();
+      
+      return true;
+    } catch (error) {
+      console.error('Error starting game:', error);
+      return false;
     }
-
-    const playerIds = allPlayers.map(p => p.id);
-    console.log('DEBUG: All player IDs for role assignment:', playerIds);
-
-    // Use test-aware role assignment
-    const roleAssignments = TEST_CONFIG.ENABLED ? assignTestRoles(playerIds) : assignRoles(playerIds);
-    console.log('DEBUG: Role assignments:', roleAssignments);
-
-    // Assign roles to regular players
-    this.gameState.players.forEach(player => {
-      player.role = roleAssignments[player.id];
-      console.log(`DEBUG: Assigned role ${player.role} to player ${player.name}`);
-    });
-
-    // Assign role to admin if exists
-    if (this.gameState.adminPlayer) {
-      this.gameState.adminPlayer.role = roleAssignments[this.gameState.adminPlayer.id];
-      console.log(`DEBUG: Assigned role ${this.gameState.adminPlayer.role} to admin ${this.gameState.adminPlayer.name}`);
-    }
-
-    this.gameState.currentPhase = 'role_reveal';
-    this.gameState.startedAt = new Date();
-    const config = getGameConfig();
-    this.setPhaseTimer(config.ROLE_REVEAL_DURATION * 60 * 1000); // Convert to milliseconds
-
-    this.emitGameEvent('game_started', {
-      gameState: this.getPublicGameState(),
-      roleAssignments: this.getPlayerRoleAssignments()
-    });
-
-    return true;
   }
 
   advancePhase(): boolean {
-    const phaseOrder: GameState['currentPhase'][] = [
-      'lobby', 'role_reveal', 'round1', 'round2', 'round3', 'round4', 'round5', 'round6', 'round7', 'round8', 'voting', 'results', 'finished'
-    ];
+    try {
+      const phaseOrder: GameState['currentPhase'][] = [
+        'lobby', 'role_reveal', 'round1', 'round2', 'round3', 'round4', 'round5', 'round6', 'round7', 'round8', 'voting', 'results', 'finished'
+      ];
 
-    const currentIndex = phaseOrder.indexOf(this.gameState.currentPhase);
-    if (currentIndex === -1 || currentIndex === phaseOrder.length - 1) return false;
+      const currentIndex = phaseOrder.indexOf(this.gameState.currentPhase);
+      if (currentIndex === -1) {
+        console.error(`Invalid current phase: ${this.gameState.currentPhase}`);
+        return false;
+      }
+      
+      if (currentIndex === phaseOrder.length - 1) {
+        console.log('Game is already finished');
+        return false;
+      }
 
-    const nextPhase = phaseOrder[currentIndex + 1];
-    this.gameState.currentPhase = nextPhase;
+      const nextPhase = phaseOrder[currentIndex + 1];
+      const previousPhase = this.gameState.currentPhase;
+      
+      // Clear any existing timer
+      this.clearPhaseTimer();
+      
+      // Update phase
+      this.gameState.currentPhase = nextPhase;
 
-    // Set appropriate timer for the new phase
-    let duration = 0;
-    if (nextPhase.startsWith('round')) {
-      duration = this.gameState.roundDuration * 60 * 1000;
-    } else if (nextPhase === 'voting') {
-      duration = this.gameState.votingDuration * 60 * 1000;
-    } else if (nextPhase === 'results') {
-      duration = 10 * 1000; // 10 seconds to view results (was 30)
+      // Set appropriate timer for the new phase
+      let duration = 0;
+      if (nextPhase.startsWith('round')) {
+        duration = this.gameState.roundDuration * 60 * 1000;
+      } else if (nextPhase === 'voting') {
+        duration = this.gameState.votingDuration * 60 * 1000;
+      } else if (nextPhase === 'results') {
+        duration = 10 * 1000; // 10 seconds to view results
+      } else if (nextPhase === 'finished') {
+        duration = 0; // No timer for finished phase
+      }
+
+      if (duration > 0) {
+        this.setPhaseTimer(duration);
+      }
+
+      // Prepare event data based on phase
+      const eventData: any = {
+        phase: nextPhase,
+        phaseEndTime: this.gameState.phaseEndTime
+      };
+
+      if (nextPhase === 'voting') {
+        // Ensure all submissions are available for voting
+        eventData.submissions = this.getAllSubmissions();
+        console.log(`Advancing to voting phase with ${Object.keys(eventData.submissions).length} rounds of submissions`);
+      } else if (nextPhase === 'results') {
+        // Calculate and send final results
+        try {
+          eventData.results = this.calculateResults();
+          eventData.submissions = this.getAllSubmissions(); // Include submissions for results display
+          console.log('DEBUG: Calculated results for results phase:', {
+            finalScores: eventData.results.finalScores.length,
+            votingResults: eventData.results.votingResults.length
+          });
+        } catch (error) {
+          console.error('Error calculating results:', error);
+          // Provide empty results as fallback
+          eventData.results = {
+            finalScores: [],
+            votingResults: [],
+            roundSubmissions: {},
+            gameStats: {
+              totalPlayers: this.gameState.players.length,
+              gameDuration: 0,
+              averageAccuracy: 0,
+              mostAccuratePlayer: '',
+              bestHiddenRole: ''
+            }
+          };
+        }
+      }
+
+      // Save state and emit event
+      this.saveGameState();
+      this.emitGameEvent('phase_changed', eventData);
+      
+      console.log(`Phase advanced: ${previousPhase} → ${nextPhase}`);
+      return true;
+    } catch (error) {
+      console.error('Error advancing phase:', error);
+      return false;
     }
-
-    if (duration > 0) {
-      this.setPhaseTimer(duration);
-    }
-
-    // Send additional data for voting phase
-    const eventData: any = {
-      phase: nextPhase,
-      phaseEndTime: this.gameState.phaseEndTime
-    };
-
-    if (nextPhase === 'voting') {
-      eventData.submissions = this.getAllSubmissions();
-    } else if (nextPhase === 'results') {
-      // Calculate and send results
-      eventData.results = this.calculateResults();
-      console.log('DEBUG: Calculated results:', eventData.results);
-    }
-
-    this.emitGameEvent('phase_changed', eventData);
-
-    return true;
   }
 
   // Submission management
   addSubmission(playerId: string, roundNumber: number, content: string): boolean {
-    if (!this.isValidSubmissionPhase(roundNumber)) return false;
+    try {
+      // Validate inputs
+      if (!playerId || !content || content.trim().length === 0) {
+        console.error('Invalid submission: empty playerId or content');
+        return false;
+      }
 
-    // Use getPlayer to check both regular players and admin
-    const player = this.getPlayer(playerId);
-    if (!player) return false;
+      if (!this.isValidSubmissionPhase(roundNumber)) {
+        console.error(`Invalid submission phase: expected round${roundNumber}, current phase: ${this.gameState.currentPhase}`);
+        return false;
+      }
 
-    // Check if player already submitted for this round
-    const roundSubmissions = this.submissions.get(roundNumber) || [];
-    if (roundSubmissions.some(s => s.playerId === playerId)) return false;
+      // Use getPlayer to check both regular players and admin
+      const player = this.getPlayer(playerId);
+      if (!player) {
+        console.error(`Player not found: ${playerId}`);
+        return false;
+      }
 
-    const submission: Submission = {
-      id: this.generateSubmissionId(),
-      playerId,
-      playerName: player.name,
-      roundNumber,
-      content: content.trim(),
-      submittedAt: new Date(),
-    };
+      // Check if player already submitted for this round
+      const roundSubmissions = this.submissions.get(roundNumber) || [];
+      if (roundSubmissions.some(s => s.playerId === playerId)) {
+        console.error(`Player ${player.name} already submitted for round ${roundNumber}`);
+        return false;
+      }
 
-    if (!this.submissions.has(roundNumber)) {
-      this.submissions.set(roundNumber, []);
+      const submission: Submission = {
+        id: this.generateSubmissionId(),
+        playerId,
+        playerName: player.name,
+        roundNumber,
+        content: content.trim(),
+        submittedAt: new Date(),
+      };
+
+      if (!this.submissions.has(roundNumber)) {
+        this.submissions.set(roundNumber, []);
+      }
+      this.submissions.get(roundNumber)!.push(submission);
+
+      this.emitGameEvent('submission_received', { submission });
+      console.log(`Submission added successfully for ${player.name} in round ${roundNumber}`);
+
+      return true;
+    } catch (error) {
+      console.error('Error adding submission:', error);
+      return false;
     }
-    this.submissions.get(roundNumber)!.push(submission);
-
-    this.emitGameEvent('submission_received', { submission });
-
-    return true;
   }
 
   // Voting management
   addVote(voterId: string, targetPlayerId: string, predictedRole: PlayerRole): boolean {
-    if (this.gameState.currentPhase !== 'voting') return false;
+    try {
+      // Validate inputs
+      if (!voterId || !targetPlayerId || !predictedRole) {
+        console.error('Invalid vote: missing required parameters');
+        return false;
+      }
 
-    // Use getPlayer to check both regular players and admin
-    const voter = this.getPlayer(voterId);
-    const target = this.getPlayer(targetPlayerId);
-    if (!voter || !target || voterId === targetPlayerId) return false;
+      if (this.gameState.currentPhase !== 'voting') {
+        console.error(`Invalid voting phase: current phase is ${this.gameState.currentPhase}`);
+        return false;
+      }
 
-    // Remove existing vote from this voter to this target
-    this.votes = this.votes.filter(v => !(v.voterId === voterId && v.targetPlayerId === targetPlayerId));
+      // Use getPlayer to check both regular players and admin
+      const voter = this.getPlayer(voterId);
+      const target = this.getPlayer(targetPlayerId);
+      
+      if (!voter) {
+        console.error(`Voter not found: ${voterId}`);
+        return false;
+      }
+      
+      if (!target) {
+        console.error(`Target player not found: ${targetPlayerId}`);
+        return false;
+      }
+      
+      if (voterId === targetPlayerId) {
+        console.error(`Player ${voter.name} attempted to vote for themselves`);
+        return false;
+      }
 
-    const vote: Vote = {
-      id: this.generateVoteId(),
-      voterId,
-      voterName: voter.name,
-      targetPlayerId,
-      targetPlayerName: target.name,
-      predictedRole,
-      submittedAt: new Date(),
-    };
+      // Validate predicted role
+      const validRoles: PlayerRole[] = ['human', 'ai_user', 'troll'];
+      if (!validRoles.includes(predictedRole)) {
+        console.error(`Invalid predicted role: ${predictedRole}`);
+        return false;
+      }
 
-    this.votes.push(vote);
-    this.emitGameEvent('vote_received', { vote });
+      // Remove existing vote from this voter to this target
+      this.votes = this.votes.filter(v => !(v.voterId === voterId && v.targetPlayerId === targetPlayerId));
 
-    return true;
+      const vote: Vote = {
+        id: this.generateVoteId(),
+        voterId,
+        voterName: voter.name,
+        targetPlayerId,
+        targetPlayerName: target.name,
+        predictedRole,
+        submittedAt: new Date(),
+      };
+
+      this.votes.push(vote);
+      this.emitGameEvent('vote_received', { vote });
+      console.log(`Vote added: ${voter.name} voted ${target.name} as ${predictedRole}`);
+
+      return true;
+    } catch (error) {
+      console.error('Error adding vote:', error);
+      return false;
+    }
   }
 
   // Results calculation
@@ -579,29 +721,52 @@ class GameManager extends EventEmitter {
   }
 
   private setPhaseTimer(duration: number): void {
-    this.clearPhaseTimer();
-    this.gameState.phaseEndTime = new Date(Date.now() + duration);
+    try {
+      this.clearPhaseTimer();
+      
+      if (duration <= 0) {
+        console.warn('Invalid timer duration:', duration);
+        return;
+      }
+      
+      this.gameState.phaseEndTime = new Date(Date.now() + duration);
 
-    this.phaseTimer = setTimeout(() => {
-      this.advancePhase();
-    }, duration);
+      this.phaseTimer = setTimeout(() => {
+        console.log(`Phase timer expired for ${this.gameState.currentPhase}, advancing phase`);
+        this.advancePhase();
+      }, duration);
+      
+      console.log(`Phase timer set: ${duration}ms for ${this.gameState.currentPhase}`);
+    } catch (error) {
+      console.error('Error setting phase timer:', error);
+    }
   }
 
   private clearPhaseTimer(): void {
-    if (this.phaseTimer) {
-      clearTimeout(this.phaseTimer);
-      this.phaseTimer = null;
-      this.gameState.phaseEndTime = null;
+    try {
+      if (this.phaseTimer) {
+        clearTimeout(this.phaseTimer);
+        this.phaseTimer = null;
+        this.gameState.phaseEndTime = null;
+        console.log('Phase timer cleared');
+      }
+    } catch (error) {
+      console.error('Error clearing phase timer:', error);
     }
   }
 
   public emitGameEvent(type: GameEvent['type'], data: any): void {
-    const event: GameEvent = {
-      type,
-      data,
-      timestamp: new Date(),
-    };
-    this.emit('gameEvent', event);
+    try {
+      const event: GameEvent = {
+        type,
+        data,
+        timestamp: new Date(),
+      };
+      this.emit('gameEvent', event);
+      console.log(`Game event emitted: ${type}`);
+    } catch (error) {
+      console.error(`Error emitting game event ${type}:`, error);
+    }
   }
 
   private generatePlayerId(): string {
@@ -661,14 +826,99 @@ class GameManager extends EventEmitter {
     return this.gameState.players.find(p => p.id === playerId) || null;
   }
 
+  // Attempt to restore a player from session if they're not in current game state
+  attemptPlayerRestore(playerId: string): Player | null {
+    // First check if player already exists
+    let player = this.getPlayer(playerId);
+    if (player) {
+      return player; // Player already exists, no need to restore
+    }
+
+    // Check if we can restore from session
+    if (this.sessionManager.canRejoinGame(playerId)) {
+      const session = this.sessionManager.getSession(playerId);
+      if (session) {
+        console.log('GameManager: Attempting to restore player session:', session.playerName);
+        
+        // For session restoration, we bypass the lobby-only restriction
+        // and directly recreate the player object from the session
+        const restoredPlayer: Player = {
+          id: playerId,
+          name: session.playerName,
+          role: 'human', // Will be restored from saved game state if available
+          joinedAt: new Date(session.joinedAt),
+          isConnected: true,
+          lastSeen: new Date(),
+          isAdmin: session.isAdmin,
+        };
+
+        // Update session activity
+        this.sessionManager.updateSessionActivity(playerId);
+
+        // Get saved game state to restore player role if available
+        const savedGameState = this.sessionManager.getGameState(this.roomId);
+        if (savedGameState) {
+          // Try to find the player's role from saved state
+          const savedPlayer = savedGameState.players.find(p => p.id === playerId);
+          if (savedPlayer) {
+            restoredPlayer.role = savedPlayer.role;
+            console.log('GameManager: Restored player role from saved state:', savedPlayer.role);
+          } else if (savedGameState.adminPlayer?.id === playerId) {
+            restoredPlayer.role = savedGameState.adminPlayer.role;
+            console.log('GameManager: Restored admin role from saved state:', savedGameState.adminPlayer.role);
+          }
+        }
+
+        // Add to appropriate list
+        if (session.isAdmin) {
+          this.gameState.adminPlayer = restoredPlayer;
+          this.emitGameEvent('admin_joined', { player: restoredPlayer });
+        } else {
+          // Check if already in players list to avoid duplicates
+          const existingIndex = this.gameState.players.findIndex(p => p.id === playerId);
+          if (existingIndex === -1) {
+            this.gameState.players.push(restoredPlayer);
+            this.emitGameEvent('player_joined', { player: restoredPlayer });
+          } else {
+            // Update existing entry
+            this.gameState.players[existingIndex] = restoredPlayer;
+          }
+        }
+
+        this.saveGameState();
+        console.log('GameManager: Successfully restored player:', session.playerName);
+        return restoredPlayer;
+      }
+    } else {
+      console.log('GameManager: Cannot rejoin game - session expired or game finished');
+    }
+
+    return null;
+  }
+
   reset(): void {
-    this.clearPhaseTimer();
-    this.disconnectionTimers.forEach(timer => clearTimeout(timer));
-    this.disconnectionTimers.clear();
-    this.gameState = this.initializeGameState();
-    this.submissions.clear();
-    this.votes = [];
-    this.emitGameEvent('game_ended', { reason: 'reset' });
+    try {
+      console.log('Resetting game state');
+      
+      // Clear all timers
+      this.clearPhaseTimer();
+      this.disconnectionTimers.forEach(timer => clearTimeout(timer));
+      this.disconnectionTimers.clear();
+      
+      // Reset game state
+      this.gameState = this.initializeGameState();
+      this.submissions.clear();
+      this.votes = [];
+      
+      // Clear session state
+      this.sessionManager.destroy();
+      this.sessionManager = SessionManager.getInstance();
+      
+      this.emitGameEvent('game_ended', { reason: 'reset' });
+      console.log('Game reset completed');
+    } catch (error) {
+      console.error('Error resetting game:', error);
+    }
   }
 
   // Admin controls
