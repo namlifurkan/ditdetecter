@@ -5,8 +5,8 @@ export const GAME_CONFIG = {
   MAX_PLAYERS: 16,
   ROUND_DURATION: 3, // minutes
   VOTING_DURATION: 10, // minutes
-  ROLE_REVEAL_DURATION: 2, // minutes
-  LOBBY_AUTO_START_THRESHOLD: 3, // Auto-start with 12 players
+  ROLE_REVEAL_DURATION: 1, // minutes
+  LOBBY_AUTO_START_THRESHOLD: 12, // Auto-start with 12 players
   LOBBY_MAX_WAIT_TIME: 5, // minutes
 } as const;
 
@@ -137,35 +137,63 @@ export function getRoleDistribution(playerCount: number): Record<PlayerRole, num
   return distribution;
 }
 
-// Utility function to assign roles randomly  
+// Utility function to assign roles randomly with proper distribution
 export function assignRoles(playerIds: string[]): Record<string, PlayerRole> {
   const assignments: Record<string, PlayerRole> = {};
+  const playerCount = playerIds.length;
   
-  // All available roles
-  const roles: PlayerRole[] = ['human', 'ai_user', 'troll'];
+  console.log(`Assigning roles for ${playerCount} players`);
   
-  // Better random assignment with shuffle
-  const shuffledRoles = [...roles];
+  // Get the proper role distribution
+  const distribution = getRoleDistribution(playerCount);
+  console.log('Role distribution:', distribution);
   
-  playerIds.forEach((playerId, index) => {
+  // Create an array of roles based on distribution
+  const rolePool: PlayerRole[] = [];
+  
+  // Add roles to pool according to distribution
+  for (const role of Object.keys(distribution) as PlayerRole[]) {
+    const count = distribution[role];
+    for (let i = 0; i < count; i++) {
+      rolePool.push(role);
+    }
+  }
+  
+  console.log('Role pool:', rolePool);
+  
+  // Shuffle the role pool using Fisher-Yates shuffle
+  for (let i = rolePool.length - 1; i > 0; i--) {
     // Use crypto.getRandomValues for better randomness if available
     let randomIndex;
-    if (typeof window !== 'undefined' && window.crypto && window.crypto.getRandomValues) {
+    if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
       const array = new Uint32Array(1);
-      window.crypto.getRandomValues(array);
-      randomIndex = array[0] % roles.length;
+      crypto.getRandomValues(array);
+      randomIndex = array[0] % (i + 1);
     } else {
       // Fallback with better seeding
-      const seed = Date.now() + index * 1000 + Math.random() * 10000;
-      randomIndex = Math.floor((seed % 10000) / 10000 * roles.length);
+      const seed = Date.now() + i * 1337 + Math.random() * 9999;
+      randomIndex = Math.floor((seed % 10000) / 10000 * (i + 1));
     }
     
-    const randomRole = roles[randomIndex];
-    assignments[playerId] = randomRole;
+    // Swap elements
+    [rolePool[i], rolePool[randomIndex]] = [rolePool[randomIndex], rolePool[i]];
+  }
+  
+  console.log('Shuffled role pool:', rolePool);
+  
+  // Assign roles to players
+  playerIds.forEach((playerId, index) => {
+    const assignedRole = rolePool[index];
+    assignments[playerId] = assignedRole;
     
-    console.log(`Assigned ${randomRole} to player ${index + 1} (${playerId})`);
+    console.log(`Assigned ${assignedRole} to player ${index + 1} (${playerId.substring(0, 8)}...)`);
   });
 
+  // Verify distribution
+  const finalCounts = { human: 0, ai_user: 0, troll: 0 };
+  Object.values(assignments).forEach(role => finalCounts[role]++);
+  console.log('FINAL ROLE DISTRIBUTION:', finalCounts);
   console.log('FINAL ASSIGNMENTS:', assignments);
+  
   return assignments;
 }

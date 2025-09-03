@@ -168,8 +168,10 @@ class SessionManager {
       .map(session => ({
         id: session.playerId,
         name: session.playerName,
+        role: 'human' as const, // Default role, will be reassigned when game starts
         isConnected: true,
         joinedAt: new Date(session.joinedAt),
+        lastSeen: new Date(session.lastSeen),
         isAdmin: false
       }));
   }
@@ -187,8 +189,10 @@ class SessionManager {
     return {
       id: adminSession.playerId,
       name: adminSession.playerName,
+      role: 'human' as const, // Default role, will be reassigned when game starts
       isConnected: true,
       joinedAt: new Date(adminSession.joinedAt),
+      lastSeen: new Date(adminSession.lastSeen),
       isAdmin: true
     };
   }
