@@ -24,9 +24,12 @@ export async function POST(request: NextRequest) {
 
     // Check if this is admin join (specific name)
     const isAdmin = body.name.toLowerCase() === 'furk12';
+    
+    // Check for existing player ID in cookies
+    const existingPlayerId = request.cookies.get('player_id')?.value;
 
     const gameManager = getGameManager();
-    const player = gameManager.addPlayer(body.name.trim(), isAdmin);
+    const player = gameManager.addPlayer(body.name.trim(), isAdmin, existingPlayerId);
 
     if (!player) {
       const gameState = gameManager.getGameState();
@@ -67,8 +70,9 @@ export async function POST(request: NextRequest) {
       httpOnly: false, // Allow client-side access
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax', // Changed from strict to lax for better compatibility
-      maxAge: 24 * 60 * 60, // 24 hours
+      maxAge: 30 * 24 * 60 * 60, // 30 days for persistent sessions
       path: '/', // Explicitly set path
+      domain: process.env.NODE_ENV === 'production' ? undefined : 'localhost', // Let browser handle domain in production
     });
 
     return response;

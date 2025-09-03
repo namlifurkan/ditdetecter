@@ -2,6 +2,7 @@ import { GameState, Player, Submission, Vote, GameEvent, PlayerRole, VotingResul
 import { assignRoles, POINTS_CONFIG } from './game-config';
 import { getGameConfig, assignTestRoles, TEST_CONFIG } from './test-config';
 import { EventEmitter } from 'events';
+import SessionManager from './session-manager';
 
 class GameManager extends EventEmitter {
   private gameState: GameState;
@@ -9,10 +10,14 @@ class GameManager extends EventEmitter {
   private votes: Vote[] = [];
   private phaseTimer: NodeJS.Timeout | null = null;
   private disconnectionTimers: Map<string, NodeJS.Timeout> = new Map();
+  private sessionManager: SessionManager;
+  private roomId: string = 'main';
 
   constructor() {
     super();
+    this.sessionManager = SessionManager.getInstance();
     this.gameState = this.initializeGameState();
+    this.restoreGameState();
   }
 
   private initializeGameState(): GameState {
@@ -30,12 +35,73 @@ class GameManager extends EventEmitter {
     };
   }
 
-  // Player management
-  addPlayer(name: string, isAdmin: boolean = false): Player | null {
+  private restoreGameState(): void {
+    const savedState = this.sessionManager.getGameState(this.roomId);
+    if (savedState) {
+      console.log('Restoring game state from session:', savedState.currentPhase);
+      this.gameState = { ...savedState };
+      
+      // Restore players from sessions
+      const activePlayers = this.sessionManager.getActivePlayers(this.roomId);
+      const adminPlayer = this.sessionManager.getAdminPlayer(this.roomId);
+      
+      this.gameState.players = activePlayers;
+      this.gameState.adminPlayer = adminPlayer;
+      
+      console.log(`Restored ${activePlayers.length} players and admin: ${adminPlayer ? 'yes' : 'no'}`);
+    }
+  }
+
+  private saveGameState(): void {
+    this.sessionManager.saveGameState(this.gameState, this.roomId);
+  }
+
+  // Player management with session persistence
+  addPlayer(name: string, isAdmin: boolean = false, existingPlayerId?: string): Player | null {
     if (this.gameState.currentPhase !== 'lobby') {
       return null; // Can only join during lobby
     }
 
+    // Try to restore existing session first
+    if (existingPlayerId) {
+      const canRejoin = this.sessionManager.canRejoinGame(existingPlayerId);
+      if (canRejoin) {
+        const session = this.sessionManager.getSession(existingPlayerId);
+        if (session && session.playerName.toLowerCase() === name.toLowerCase()) {
+          // Restore session
+          this.sessionManager.updateSessionActivity(existingPlayerId);
+          
+          const player: Player = {
+            id: existingPlayerId,
+            name: session.playerName,
+            role: 'human',
+            joinedAt: new Date(session.joinedAt),
+            isConnected: true,
+            lastSeen: new Date(),
+            isAdmin: session.isAdmin,
+          };
+
+          if (session.isAdmin) {
+            this.gameState.adminPlayer = player;
+            this.emitGameEvent('admin_joined', { player });
+          } else {
+            // Check if player is already in the list
+            const existingIndex = this.gameState.players.findIndex(p => p.id === existingPlayerId);
+            if (existingIndex === -1) {
+              this.gameState.players.push(player);
+              this.emitGameEvent('player_joined', { player });
+            }
+          }
+
+          this.saveGameState();
+          return player;
+        }
+      }
+    }
+
+    // Create new player session
+    const playerId = existingPlayerId || this.sessionManager.generatePlayerId();
+    
     // Handle admin separately
     if (isAdmin) {
       // Check if admin already exists
@@ -49,7 +115,7 @@ class GameManager extends EventEmitter {
       }
 
       const adminPlayer: Player = {
-        id: this.generatePlayerId(),
+        id: playerId,
         name: name.trim(),
         role: 'human', // Will be reassigned when game starts
         joinedAt: new Date(),
@@ -58,8 +124,12 @@ class GameManager extends EventEmitter {
         isAdmin: true,
       };
 
+      // Create session
+      this.sessionManager.createOrRestoreSession(playerId, name.trim(), true, this.roomId);
+      
       this.gameState.adminPlayer = adminPlayer;
       this.emitGameEvent('admin_joined', { player: adminPlayer });
+      this.saveGameState();
       return adminPlayer;
     }
 
@@ -75,7 +145,7 @@ class GameManager extends EventEmitter {
     }
 
     const player: Player = {
-      id: this.generatePlayerId(),
+      id: playerId,
       name: name.trim(),
       role: 'human', // Will be reassigned when game starts
       joinedAt: new Date(),
@@ -84,16 +154,23 @@ class GameManager extends EventEmitter {
       isAdmin: false,
     };
 
+    // Create session
+    this.sessionManager.createOrRestoreSession(playerId, name.trim(), false, this.roomId);
+
     this.gameState.players.push(player);
     this.emitGameEvent('player_joined', { player });
 
     // Check if we can auto-start the game
     this.checkAutoStart();
+    this.saveGameState();
 
     return player;
   }
 
   removePlayer(playerId: string): boolean {
+    // Remove from session manager
+    this.sessionManager.removeSession(playerId);
+    
     // Check if it's the admin
     if (this.gameState.adminPlayer && this.gameState.adminPlayer.id === playerId) {
       const adminPlayer = this.gameState.adminPlayer;
@@ -107,6 +184,7 @@ class GameManager extends EventEmitter {
       }
 
       this.emitGameEvent('admin_left', { player: adminPlayer });
+      this.saveGameState();
       return true;
     }
 
@@ -125,6 +203,7 @@ class GameManager extends EventEmitter {
     }
 
     this.emitGameEvent('player_left', { player });
+    this.saveGameState();
 
     // Check if game should end due to too few players
     this.checkGameContinuation();
@@ -133,6 +212,11 @@ class GameManager extends EventEmitter {
   }
 
   updatePlayerConnection(playerId: string, isConnected: boolean): boolean {
+    // Update session activity
+    if (isConnected) {
+      this.sessionManager.updateSessionActivity(playerId);
+    }
+    
     // Check admin first
     if (this.gameState.adminPlayer && this.gameState.adminPlayer.id === playerId) {
       const adminPlayer = this.gameState.adminPlayer;
@@ -152,6 +236,7 @@ class GameManager extends EventEmitter {
           this.disconnectionTimers.delete(playerId);
         }
       }
+      this.saveGameState();
       return true;
     }
 
@@ -176,6 +261,8 @@ class GameManager extends EventEmitter {
         this.disconnectionTimers.delete(playerId);
       }
     }
+
+    this.saveGameState();
 
     return true;
   }
@@ -512,7 +599,7 @@ class GameManager extends EventEmitter {
   }
 
   private generatePlayerId(): string {
-    return `player_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    return this.sessionManager.generatePlayerId();
   }
 
   private generateSubmissionId(): string {
@@ -685,14 +772,18 @@ class GameManager extends EventEmitter {
   }
 }
 
-// Singleton instance
-let gameManager: GameManager | null = null;
+// Singleton instance with global process-level storage to prevent multiple instances in production
+declare global {
+  var __gameManagerInstance__: GameManager | undefined;
+}
 
 export function getGameManager(): GameManager {
-  if (!gameManager) {
-    gameManager = new GameManager();
+  // Use global process-level variable to ensure single instance across all requests
+  if (!global.__gameManagerInstance__) {
+    console.log('Creating new GameManager instance');
+    global.__gameManagerInstance__ = new GameManager();
   }
-  return gameManager;
+  return global.__gameManagerInstance__;
 }
 
 export { GameManager };

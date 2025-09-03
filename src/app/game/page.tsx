@@ -24,7 +24,7 @@ function getCookie(name: string): string | null {
 }
 
 export default function GamePage() {
-  const { gameData, isConnected, error } = useGameEvents();
+  const { gameData, isConnected, isOffline, error } = useGameEvents();
   const router = useRouter();
   const [playerId, setPlayerId] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -181,26 +181,28 @@ export default function GamePage() {
   }, [mounted, playerId]);
 
   // Connection error handling
-  if (error) {
+  if (error && !isOffline) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 flex items-center justify-center p-4">
-        <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-8 border border-white/20 text-center max-w-md">
+      <div className="min-h-screen retro-grid flex items-center justify-center p-4">
+        <div className="arcade-panel p-8 text-center max-w-md">
           <div className="text-red-400 text-6xl mb-4">⚠️</div>
-          <h2 className="text-2xl font-bold text-white mb-4">Connection Lost</h2>
-          <p className="text-gray-300 mb-6">{error}</p>
-          <p className="text-sm text-gray-400 mb-6">Redirecting to home page in a few seconds...</p>
+          <h2 className="text-2xl font-bold neon-text-pink mb-4" style={{fontFamily: 'Orbitron, monospace'}}>CONNECTION LOST</h2>
+          <p className="neon-text-cyan mb-6" style={{fontFamily: 'Press Start 2P, monospace', fontSize: '10px'}}>{error}</p>
+          <p className="text-sm text-gray-400 mb-6">REDIRECTING TO HOME IN A FEW SECONDS...</p>
           <div className="flex gap-3 justify-center">
             <button
               onClick={() => window.location.href = '/'}
-              className="px-6 py-3 bg-gradient-to-r from-green-500 to-emerald-500 text-white font-bold rounded-xl hover:from-green-600 hover:to-emerald-600 transition-all duration-200"
+              className="arcade-button px-6 py-3 neon-text-green font-bold"
+              style={{fontFamily: 'Press Start 2P, monospace', fontSize: '8px'}}
             >
-              Go Home
+              GO HOME
             </button>
             <button
               onClick={() => window.location.reload()}
-              className="px-6 py-3 bg-gradient-to-r from-pink-500 to-purple-500 text-white font-bold rounded-xl hover:from-pink-600 hover:to-purple-600 transition-all duration-200"
+              className="arcade-button px-6 py-3 neon-text-pink font-bold"
+              style={{fontFamily: 'Press Start 2P, monospace', fontSize: '8px'}}
             >
-              Refresh Page
+              REFRESH
             </button>
           </div>
         </div>
@@ -234,12 +236,32 @@ export default function GamePage() {
       <div className={`flex items-center space-x-2 px-4 py-2 arcade-panel text-xs ${
         isConnected 
           ? 'neon-text-green' 
-          : 'neon-text-pink'
+          : isOffline 
+            ? 'neon-text-yellow'
+            : 'neon-text-pink'
       }`} style={{fontFamily: 'Press Start 2P, monospace'}}>
-        <div className={`w-2 h-2 ${isConnected ? 'bg-green-400 retro-pulse' : 'bg-red-400 retro-pulse'}`} 
-             style={{boxShadow: isConnected ? '0 0 10px #00ff00' : '0 0 10px #ff00ff'}}></div>
-        <span>{isConnected ? 'ONLINE' : 'OFFLINE'}</span>
+        <div className={`w-2 h-2 ${
+          isConnected 
+            ? 'bg-green-400 retro-pulse' 
+            : isOffline
+              ? 'bg-yellow-400 retro-pulse'
+              : 'bg-red-400 retro-pulse'
+        }`} style={{
+          boxShadow: isConnected 
+            ? '0 0 10px #00ff00' 
+            : isOffline
+              ? '0 0 10px #ffff00'
+              : '0 0 10px #ff00ff'
+        }}></div>
+        <span>{isConnected ? 'ONLINE' : isOffline ? 'OFFLINE' : 'DISCONNECTED'}</span>
       </div>
+      {isOffline && error && (
+        <div className="mt-2 px-3 py-2 arcade-panel text-xs neon-text-yellow max-w-xs"
+             style={{fontFamily: 'Press Start 2P, monospace', fontSize: '8px'}}>
+          <div className="mb-1">⚠️ OFFLINE MODE</div>
+          <div className="opacity-75">USING CACHED DATA</div>
+        </div>
+      )}
     </div>
   ) : null;
 

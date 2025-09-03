@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { GameEvent, GameState, Player, PlayerRole } from '@/types/game';
+import { OfflineGameManager } from '@/lib/offline-game-manager';
 
 interface GameEventData {
   gameState: Omit<GameState, 'players'> & { players: Omit<Player, 'role'>[] };
@@ -12,15 +13,73 @@ interface GameEventData {
 export function useGameEvents() {
   const [gameData, setGameData] = useState<GameEventData | null>(null);
   const [isConnected, setIsConnected] = useState(false);
+  const [isOffline, setIsOffline] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const reconnectAttempts = useRef(0);
   const maxReconnectAttempts = 5;
+  const offlineDataRef = useRef<GameEventData | null>(null);
+  const offlineManager = useRef<OfflineGameManager | null>(null);
+
+  // Save game data to localStorage for offline mode
+  const saveOfflineData = useCallback((data: GameEventData) => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('offlineGameData', JSON.stringify({
+        ...data,
+        lastSaved: Date.now(),
+      }));
+      offlineDataRef.current = data;
+      
+      // Update offline manager
+      if (!offlineManager.current) {
+        offlineManager.current = OfflineGameManager.getInstance();
+      }
+      offlineManager.current.setGameData(data);
+    }
+  }, []);
+
+  // Load game data from localStorage for offline mode
+  const loadOfflineData = useCallback((): GameEventData | null => {
+    if (typeof window !== 'undefined') {
+      try {
+        const stored = localStorage.getItem('offlineGameData');
+        if (stored) {
+          const data = JSON.parse(stored);
+          // Only use data if it's less than 5 minutes old
+          if (Date.now() - data.lastSaved < 5 * 60 * 1000) {
+            return data;
+          }
+        }
+      } catch (error) {
+        console.error('Error loading offline data:', error);
+      }
+    }
+    return null;
+  }, []);
+
+  // Check if browser is online/offline
+  const checkOnlineStatus = useCallback(() => {
+    if (typeof window !== 'undefined') {
+      setIsOffline(!navigator.onLine);
+    }
+  }, []);
 
   const connect = () => {
     if (eventSourceRef.current?.readyState === EventSource.OPEN) {
       return; // Already connected
+    }
+
+    // Check online status first
+    checkOnlineStatus();
+    if (typeof window !== 'undefined' && !navigator.onLine) {
+      setIsOffline(true);
+      const offlineData = loadOfflineData();
+      if (offlineData) {
+        setGameData(offlineData);
+        console.log('Using offline game data');
+      }
+      return;
     }
 
     // Clean up any existing connection first
@@ -33,16 +92,49 @@ export function useGameEvents() {
       const eventSource = new EventSource('/api/events');
       eventSourceRef.current = eventSource;
 
-      eventSource.onopen = () => {
+      eventSource.onopen = async () => {
         setIsConnected(true);
+        setIsOffline(false);
         setError(null);
         reconnectAttempts.current = 0;
         console.log('Connected to game events');
+        
+        // Try to sync offline actions when connection is restored
+        if (offlineManager.current) {
+          try {
+            const syncSuccess = await offlineManager.current.syncOfflineActions();
+            if (syncSuccess) {
+              console.log('Offline actions synced successfully');
+            }
+          } catch (error) {
+            console.error('Failed to sync offline actions:', error);
+          }
+        }
       };
 
       eventSource.onerror = (event) => {
         console.error('EventSource error:', event);
         setIsConnected(false);
+        
+        // Check if we're offline
+        checkOnlineStatus();
+        if (typeof window !== 'undefined' && !navigator.onLine) {
+          setIsOffline(true);
+          const offlineData = loadOfflineData();
+          if (offlineData) {
+            setGameData(offlineData);
+            setError('You are offline. Using cached game data.');
+            console.log('Switched to offline mode');
+            
+            // Initialize offline manager
+            if (!offlineManager.current) {
+              offlineManager.current = OfflineGameManager.getInstance();
+            }
+            offlineManager.current.setGameData(offlineData);
+            offlineManager.current.showOfflineNotification();
+          }
+          return;
+        }
         
         if (reconnectAttempts.current < maxReconnectAttempts) {
           const delay = Math.pow(2, reconnectAttempts.current) * 1000; // Exponential backoff
@@ -53,13 +145,29 @@ export function useGameEvents() {
             connect();
           }, delay);
         } else {
-          setError('Connection lost. Please refresh the page.');
-          // After 3 seconds, redirect to home page
-          setTimeout(() => {
-            if (typeof window !== 'undefined') {
-              window.location.href = '/';
+          // Try to use offline data before giving up
+          const offlineData = loadOfflineData();
+          if (offlineData) {
+            setIsOffline(true);
+            setGameData(offlineData);
+            setError('Connection lost. Using offline mode.');
+            console.log('Using offline mode after connection failure');
+            
+            // Initialize offline manager
+            if (!offlineManager.current) {
+              offlineManager.current = OfflineGameManager.getInstance();
             }
-          }, 3000);
+            offlineManager.current.setGameData(offlineData);
+            offlineManager.current.showOfflineNotification('Connection lost. Your actions will be synced when reconnected.');
+          } else {
+            setError('Connection lost. Please refresh the page.');
+            // After 3 seconds, redirect to home page
+            setTimeout(() => {
+              if (typeof window !== 'undefined') {
+                window.location.href = '/';
+              }
+            }, 3000);
+          }
         }
       };
 
@@ -67,10 +175,15 @@ export function useGameEvents() {
       eventSource.addEventListener('game_state', (event) => {
         try {
           const data = JSON.parse(event.data);
+          const newGameData = {
+            ...data,
+          };
           setGameData(prevData => ({
             ...prevData,
-            ...data,
+            ...newGameData,
           }));
+          // Save to offline storage
+          saveOfflineData(newGameData);
         } catch (error) {
           console.error('Error parsing game_state event:', error);
         }
@@ -308,8 +421,44 @@ export function useGameEvents() {
   useEffect(() => {
     connect();
     
+    // Listen for online/offline events
+    const handleOnline = () => {
+      console.log('Browser came online');
+      setIsOffline(false);
+      if (!isConnected) {
+        console.log('Attempting to reconnect after coming online');
+        connect();
+      }
+    };
+    
+    const handleOffline = () => {
+      console.log('Browser went offline');
+      setIsOffline(true);
+      const offlineData = loadOfflineData();
+      if (offlineData) {
+        setGameData(offlineData);
+        setError('You are offline. Using cached game data.');
+        
+        // Initialize offline manager
+        if (!offlineManager.current) {
+          offlineManager.current = OfflineGameManager.getInstance();
+        }
+        offlineManager.current.setGameData(offlineData);
+        offlineManager.current.showOfflineNotification();
+      }
+    };
+    
+    if (typeof window !== 'undefined') {
+      window.addEventListener('online', handleOnline);
+      window.addEventListener('offline', handleOffline);
+    }
+    
     return () => {
       disconnect();
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('online', handleOnline);
+        window.removeEventListener('offline', handleOffline);
+      }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -360,11 +509,27 @@ export function useGameEvents() {
     loadInitialState();
   }, []);
 
+  // Expose offline manager functions
+  const submitOffline = useCallback((playerId: string, submission: any) => {
+    if (offlineManager.current) {
+      offlineManager.current.addOfflineSubmission(playerId, submission);
+    }
+  }, []);
+
+  const voteOffline = useCallback((playerId: string, votes: any) => {
+    if (offlineManager.current) {
+      offlineManager.current.addOfflineVote(playerId, votes);
+    }
+  }, []);
+
   return {
     gameData,
     isConnected,
+    isOffline,
     error,
     reconnect: connect,
+    submitOffline,
+    voteOffline,
   };
 }
 

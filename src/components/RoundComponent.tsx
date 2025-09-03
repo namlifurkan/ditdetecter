@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { ROUND_CONFIGS } from '@/lib/game-config';
+import { useGameEvents } from '@/hooks/useGameEvents';
 
 interface RoundComponentProps {
   roundNumber: number;
@@ -8,11 +9,13 @@ interface RoundComponentProps {
 }
 
 export default function RoundComponent({ roundNumber, timeLeft, playerId }: RoundComponentProps) {
+  const { isConnected, isOffline, submitOffline } = useGameEvents();
   const [content, setContent] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [hasSubmitted, setHasSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showPrompt, setShowPrompt] = useState(true);
+  const [offlineSubmitted, setOfflineSubmitted] = useState(false);
 
   // Reset submission state when round changes
   useEffect(() => {
@@ -21,6 +24,7 @@ export default function RoundComponent({ roundNumber, timeLeft, playerId }: Roun
     setError(null);
     setIsSubmitting(false);
     setShowPrompt(true);
+    setOfflineSubmitted(false);
   }, [roundNumber]);
 
   const roundConfig = ROUND_CONFIGS.find(r => r.roundNumber === roundNumber);
@@ -32,11 +36,31 @@ export default function RoundComponent({ roundNumber, timeLeft, playerId }: Roun
   const isOverLimit = roundConfig ? characterCount > roundConfig.maxLength : false;
 
   const handleSubmit = useCallback(async () => {
-    if (!content.trim() || isOverLimit || hasSubmitted) return;
+    if (!content.trim() || isOverLimit || hasSubmitted || offlineSubmitted) return;
 
     setIsSubmitting(true);
     setError(null);
 
+    // If offline, store submission locally
+    if (isOffline || !isConnected) {
+      try {
+        submitOffline(playerId, {
+          roundNumber,
+          answer: content.trim(),
+          timestamp: Date.now()
+        });
+        setOfflineSubmitted(true);
+        setError('Offline mode: Your answer has been saved and will be submitted when connection is restored.');
+        console.log('Submission saved offline');
+      } catch (error) {
+        setError('Failed to save submission offline');
+      } finally {
+        setIsSubmitting(false);
+      }
+      return;
+    }
+
+    // Online submission
     try {
       console.log('Submitting:', { roundNumber, content: content.trim() });
       
@@ -60,18 +84,29 @@ export default function RoundComponent({ roundNumber, timeLeft, playerId }: Roun
         setError(result.error || 'Failed to submit');
       }
     } catch (error) {
-      setError('Failed to connect to server');
+      // If network error, try offline mode
+      if (!isConnected) {
+        submitOffline(playerId, {
+          roundNumber,
+          answer: content.trim(),
+          timestamp: Date.now()
+        });
+        setOfflineSubmitted(true);
+        setError('Connection lost. Your answer has been saved and will be submitted when connection is restored.');
+      } else {
+        setError('Failed to connect to server');
+      }
     } finally {
       setIsSubmitting(false);
     }
-  }, [roundNumber, content, isOverLimit, hasSubmitted]);
+  }, [roundNumber, content, isOverLimit, hasSubmitted, offlineSubmitted, isOffline, isConnected, submitOffline, playerId]);
 
   // Auto-submit when time runs out
   useEffect(() => {
-    if (timeLeft <= 0 && content.trim() && !hasSubmitted && !isSubmitting) {
+    if (timeLeft <= 0 && content.trim() && !hasSubmitted && !offlineSubmitted && !isSubmitting) {
       handleSubmit();
     }
-  }, [timeLeft, content, hasSubmitted, isSubmitting, handleSubmit]);
+  }, [timeLeft, content, hasSubmitted, offlineSubmitted, isSubmitting, handleSubmit]);
 
   if (!roundConfig) {
     return (
@@ -152,13 +187,26 @@ export default function RoundComponent({ roundNumber, timeLeft, playerId }: Roun
           </div>
 
           <div className="p-6">
-            {hasSubmitted ? (
+            {hasSubmitted || offlineSubmitted ? (
               <div className="text-center py-12">
-                <div className="text-6xl mb-4">✅</div>
-                <h3 className="text-2xl font-bold text-green-400 mb-2">Gönderildi!</h3>
+                <div className="text-6xl mb-4">{offlineSubmitted ? '📱' : '✅'}</div>
+                <h3 className={`text-2xl font-bold mb-2 ${offlineSubmitted ? 'text-yellow-400' : 'text-green-400'}`}>
+                  {offlineSubmitted ? 'Çevrimdışı Kaydedildi!' : 'Gönderildi!'}
+                </h3>
                 <p className="text-gray-300 mb-6">
-                  Cevabın kaydedildi. Diğer oyuncuların bitmesini bekle.
+                  {offlineSubmitted 
+                    ? 'Cevabın offline olarak kaydedildi. İnternet bağlantısı geri geldiğinde otomatik gönderilecek.'
+                    : 'Cevabın kaydedildi. Diğer oyuncuların bitmesini bekle.'
+                  }
                 </p>
+                {isOffline && offlineSubmitted && (
+                  <div className="bg-yellow-500/20 border border-yellow-500/30 rounded-xl p-4 mb-6">
+                    <p className="text-yellow-300 text-sm flex items-center justify-center">
+                      <span className="mr-2">⚠️</span>
+                      Çevrimdışı moddasınız. Bağlantı geri geldiğinde otomatik senkronize edilecek.
+                    </p>
+                  </div>
+                )}
                 <div className="bg-white/5 rounded-xl p-4 border border-white/10">
                   <p className="text-sm text-gray-400 mb-2">Senin gönderdiğin:</p>
                   <div className="text-white bg-white/5 rounded-lg p-3 max-h-32 overflow-y-auto">
@@ -178,8 +226,16 @@ export default function RoundComponent({ roundNumber, timeLeft, playerId }: Roun
                 />
 
                 {error && (
-                  <div className="mt-4 bg-red-500/20 border border-red-500/30 rounded-xl p-4">
-                    <p className="text-red-300 text-sm">{error}</p>
+                  <div className={`mt-4 border rounded-xl p-4 ${
+                    error.includes('Offline mode') || error.includes('connection is restored')
+                      ? 'bg-yellow-500/20 border-yellow-500/30'
+                      : 'bg-red-500/20 border-red-500/30'
+                  }`}>
+                    <p className={`text-sm ${
+                      error.includes('Offline mode') || error.includes('connection is restored')
+                        ? 'text-yellow-300'
+                        : 'text-red-300'
+                    }`}>{error}</p>
                   </div>
                 )}
 
@@ -193,16 +249,20 @@ export default function RoundComponent({ roundNumber, timeLeft, playerId }: Roun
 
                   <button
                     onClick={handleSubmit}
-                    disabled={!content.trim() || isOverLimit || isSubmitting}
-                    className="px-8 py-3 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 disabled:from-gray-600 disabled:to-gray-700 text-white font-bold rounded-xl transition-all duration-200 transform hover:scale-105 disabled:scale-100 disabled:cursor-not-allowed shadow-lg"
+                    disabled={!content.trim() || isOverLimit || isSubmitting || hasSubmitted || offlineSubmitted}
+                    className={`px-8 py-3 font-bold rounded-xl transition-all duration-200 transform hover:scale-105 disabled:scale-100 disabled:cursor-not-allowed shadow-lg ${
+                      isOffline 
+                        ? 'bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600'
+                        : 'bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600'
+                    } disabled:from-gray-600 disabled:to-gray-700 text-white`}
                   >
                     {isSubmitting ? (
                       <span className="flex items-center">
                         <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                        Gönderiliyor...
+                        {isOffline ? 'Offline Kaydediyor...' : 'Gönderiliyor...'}
                       </span>
                     ) : (
-                      'Cevabı Gönder'
+                      isOffline ? 'Offline Kaydet' : 'Cevabı Gönder'
                     )}
                   </button>
                 </div>
@@ -212,7 +272,7 @@ export default function RoundComponent({ roundNumber, timeLeft, playerId }: Roun
         </div>
 
         {/* Helper Tips */}
-        {!hasSubmitted && (
+        {!hasSubmitted && !offlineSubmitted && (
           <div className="mt-8 bg-gradient-to-r from-yellow-500/10 to-orange-500/10 backdrop-blur-sm rounded-2xl p-6 border border-yellow-500/20">
             <h3 className="text-lg font-bold text-yellow-300 mb-3 flex items-center">
               💡 Bu Round İçin İpuçları
@@ -223,6 +283,14 @@ export default function RoundComponent({ roundNumber, timeLeft, playerId }: Roun
               <div>• Seni benzersiz kılan insan özelliklerini düşün</div>
               <div>• Cevabın verirken eğlen!</div>
             </div>
+            {isOffline && (
+              <div className="mt-4 bg-orange-500/20 border border-orange-500/30 rounded-lg p-3">
+                <p className="text-orange-300 text-sm flex items-center">
+                  <span className="mr-2">📱</span>
+                  Çevrimdışı moddasınız. Cevabınız kaydedilip bağlantı geri geldiğinde gönderilecek.
+                </p>
+              </div>
+            )}
           </div>
         )}
 
@@ -230,14 +298,24 @@ export default function RoundComponent({ roundNumber, timeLeft, playerId }: Roun
         <div className="mt-6 text-center">
           <div className="inline-flex items-center space-x-6 text-sm text-gray-300">
             <span className="flex items-center">
-              <span className={`w-2 h-2 rounded-full mr-2 ${hasSubmitted ? 'bg-green-400' : 'bg-yellow-400'}`}></span>
-              {hasSubmitted ? 'Submitted' : 'In Progress'}
+              <span className={`w-2 h-2 rounded-full mr-2 ${
+                hasSubmitted ? 'bg-green-400' : 
+                offlineSubmitted ? 'bg-yellow-400' : 
+                'bg-gray-400'
+              }`}></span>
+              {hasSubmitted ? 'Submitted' : offlineSubmitted ? 'Saved Offline' : 'In Progress'}
             </span>
             <span className="flex items-center">
               <span className="w-2 h-2 bg-blue-400 rounded-full mr-2"></span>
               Round {roundNumber} of 8
             </span>
-            {isTimeRunningOut && (
+            {isOffline && (
+              <span className="flex items-center text-yellow-400">
+                <span className="w-2 h-2 bg-yellow-400 rounded-full mr-2"></span>
+                Offline Mode
+              </span>
+            )}
+            {isTimeRunningOut && !hasSubmitted && !offlineSubmitted && (
               <span className="flex items-center text-red-400 animate-pulse">
                 <span className="w-2 h-2 bg-red-400 rounded-full mr-2"></span>
                 Time running out!
