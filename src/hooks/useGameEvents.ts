@@ -21,6 +21,8 @@ export function useGameEvents() {
   const maxReconnectAttempts = 5;
   const offlineDataRef = useRef<GameEventData | null>(null);
   const offlineManager = useRef<OfflineGameManager | null>(null);
+  const pollingInterval = useRef<NodeJS.Timeout | null>(null);
+  const [isPolling, setIsPolling] = useState(false);
 
   // Save game data to localStorage for offline mode
   const saveOfflineData = useCallback((data: GameEventData) => {
@@ -65,6 +67,40 @@ export function useGameEvents() {
     }
   }, []);
 
+  // Fallback polling mechanism for when SSE fails
+  const startPolling = useCallback(() => {
+    if (pollingInterval.current) return; // Already polling
+    
+    console.log('Starting fallback polling');
+    setIsPolling(true);
+    
+    pollingInterval.current = setInterval(async () => {
+      try {
+        const response = await fetch('/api/game-state');
+        if (response.ok) {
+          const result = await response.json();
+          if (result.success) {
+            setGameData(result.data);
+            setError(null);
+            saveOfflineData(result.data);
+          }
+        }
+      } catch (error) {
+        console.error('Polling error:', error);
+        // Don't update error state during polling to avoid UI flicker
+      }
+    }, 3000); // Poll every 3 seconds
+  }, [saveOfflineData]);
+
+  const stopPolling = useCallback(() => {
+    if (pollingInterval.current) {
+      clearInterval(pollingInterval.current);
+      pollingInterval.current = null;
+      setIsPolling(false);
+      console.log('Stopped fallback polling');
+    }
+  }, []);
+
   const connect = () => {
     if (eventSourceRef.current?.readyState === EventSource.OPEN) {
       return; // Already connected
@@ -97,6 +133,7 @@ export function useGameEvents() {
         setIsOffline(false);
         setError(null);
         reconnectAttempts.current = 0;
+        stopPolling(); // Stop polling when SSE connects
         console.log('Connected to game events');
         
         // Try to sync offline actions when connection is restored
@@ -145,12 +182,16 @@ export function useGameEvents() {
             connect();
           }, delay);
         } else {
-          // Try to use offline data before giving up
+          // Start polling as fallback instead of giving up
+          console.log('SSE failed, starting fallback polling');
+          startPolling();
+          
+          // Try to use offline data
           const offlineData = loadOfflineData();
           if (offlineData) {
             setIsOffline(true);
             setGameData(offlineData);
-            setError('Connection lost. Using offline mode.');
+            setError('Connection unstable. Using fallback mode.');
             console.log('Using offline mode after connection failure');
             
             // Initialize offline manager
@@ -158,15 +199,9 @@ export function useGameEvents() {
               offlineManager.current = OfflineGameManager.getInstance();
             }
             offlineManager.current.setGameData(offlineData);
-            offlineManager.current.showOfflineNotification('Connection lost. Your actions will be synced when reconnected.');
+            offlineManager.current.showOfflineNotification('Connection unstable. Your actions will be synced when possible.');
           } else {
-            setError('Connection lost. Please refresh the page.');
-            // After 3 seconds, redirect to home page
-            setTimeout(() => {
-              if (typeof window !== 'undefined') {
-                window.location.href = '/';
-              }
-            }, 3000);
+            setError('Connection issues. Attempting to reconnect...');
           }
         }
       };
@@ -415,6 +450,7 @@ export function useGameEvents() {
       clearTimeout(reconnectTimeoutRef.current);
       reconnectTimeoutRef.current = null;
     }
+    stopPolling();
     setIsConnected(false);
   };
 
@@ -524,7 +560,7 @@ export function useGameEvents() {
 
   return {
     gameData,
-    isConnected,
+    isConnected: isConnected || isPolling, // Show as connected if polling works
     isOffline,
     error,
     reconnect: connect,

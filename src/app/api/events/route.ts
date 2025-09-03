@@ -43,8 +43,13 @@ export async function GET(request: NextRequest) {
 
       // Send periodic heartbeat to keep connection alive
       const heartbeatInterval = setInterval(() => {
-        sendEvent('heartbeat', { timestamp: new Date().toISOString() });
-      }, 30000); // 30 seconds
+        try {
+          sendEvent('heartbeat', { timestamp: new Date().toISOString() });
+        } catch (error) {
+          console.error('Heartbeat error:', error);
+          clearInterval(heartbeatInterval);
+        }
+      }, 15000); // 15 seconds for Vercel
 
       // Handle client disconnect
       request.signal.addEventListener('abort', () => {
