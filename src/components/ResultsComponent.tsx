@@ -224,7 +224,6 @@ export default function ResultsComponent({ results, gameState, submissions }: Re
                     {result.actualRole === 'human' && '👤'}
                     {result.actualRole === 'ai_user' && '🤖'}
                     {result.actualRole === 'troll' && '👹'}
-                    {result.actualRole === 'mixed' && '🎭'}
                   </div>
                   <div>
                     <h3 className="text-2xl font-bold text-white">{result.playerName}</h3>

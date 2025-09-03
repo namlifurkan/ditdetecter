@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Dead Internet Detector is a multiplayer social deduction game built with Next.js 15, TypeScript, and Tailwind CSS v4. Players are assigned secret roles (Pure Human, AI User, Troll, or Mixed) and must identify who's using AI tools based on responses to creative challenges.
+Dead Internet Detector is a multiplayer social deduction game built with Next.js 15, TypeScript, and Tailwind CSS v4. Players are assigned secret roles (Pure Human, AI User, or Troll) and must identify who's using AI tools based on responses to creative challenges.
 
 **Tech Stack**: Next.js 15 + TypeScript + Tailwind CSS v4 + Server-Sent Events + EventEmitter pattern
 

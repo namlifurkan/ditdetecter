@@ -38,19 +38,19 @@ export function getTestRoleDistribution(playerCount: number): Record<PlayerRole,
   if (playerCount === 1) {
     // Always give troll for testing (to make sure role assignment works)
     console.log('TEST: Assigning troll role for single player test');
-    return { human: 0, ai_user: 0, troll: 1, mixed: 0 };
+    return { human: 0, ai_user: 0, troll: 1 };
   }
   
   if (playerCount === 2) {
-    return { human: 1, ai_user: 1, troll: 0, mixed: 0 };
+    return { human: 1, ai_user: 1, troll: 0 };
   }
   
   if (playerCount === 3) {
-    return { human: 1, ai_user: 1, troll: 1, mixed: 0 };
+    return { human: 1, ai_user: 1, troll: 1 };
   }
   
   if (playerCount === 4) {
-    return { human: 1, ai_user: 1, troll: 1, mixed: 1 };
+    return { human: 1, ai_user: 1, troll: 1 };
   }
 
   // Fallback to production logic

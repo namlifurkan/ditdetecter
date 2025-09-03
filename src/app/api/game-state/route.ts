@@ -19,13 +19,13 @@ export async function GET(request: NextRequest) {
         console.log('ACTUAL ROLE:', playerRole, 'for player', player.name);
       } else {
         console.log('GAME STATE API: Player not found');
-        const roles = ['human', 'ai_user', 'troll', 'mixed'];
+        const roles = ['human', 'ai_user', 'troll'];
         playerRole = roles[Math.floor(Math.random() * roles.length)];
         console.log('RANDOM ROLE NO PLAYER:', playerRole);
       }
     } else {
       console.log('GAME STATE API: No player ID in cookie');
-      const roles = ['human', 'ai_user', 'troll', 'mixed'];
+      const roles = ['human', 'ai_user', 'troll'];
       playerRole = roles[Math.floor(Math.random() * roles.length)];
       console.log('RANDOM ROLE NO COOKIE:', playerRole);
     }

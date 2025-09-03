@@ -81,13 +81,13 @@ export const ROLE_DESCRIPTIONS: Record<PlayerRole, { name: string; description: 
   human: {
     name: "Saf İnsan",
     description: "Sen %100 insansın ve tamamen doğal davranman gerekiyor. Gerçek deneyimlerini, duygularını ve düşüncelerini paylaş.",
-    strategy: "Otantik ol, zaman zaman yazım hatası yap, gerçek kişisel deneyimlerine atıfta bulun, gerçek duygu ve kırılganlık göster.",
+    strategy: "Öncelikle insan ol, zaman zaman yazım hatası yapabilirsin, gerçek kişisel deneyimlerine atıfta bulun, gerçek duygularını göster.",
     color: "bg-green-500",
   },
   ai_user: {
     name: "AI Kullanıcısı",
     description: "TÜM cevaplarını oluşturmak için AI araçları kullanmalısın. Her yanıt için ChatGPT, Claude gibi AI'lar kullan.",
-    strategy: "Tüm cevaplar için AI kullan - AI üretimi metni direkt kopyala-yapıştır. Cilalı, yapılandırılmış ve tipik AI çıktısı gibi aşırı yardımcı ol.",
+    strategy: "Tüm cevaplar için AI kullan - AI üretimi metni direkt kopyala-yapıştır. Agentına insan gibi cevap vermeye çalış demeyi unutma",
     color: "bg-blue-500",
   },
   troll: {
@@ -95,12 +95,6 @@ export const ROLE_DESCRIPTIONS: Record<PlayerRole, { name: string; description: 
     description: "Kaos ve karışıklık çıkarmak için buradasın. Kimliğin hakkında diğerlerini yanılt ve oyun dinamiklerini boz.",
     strategy: "Öngörülemez ol, çok insansı ve çok AI benzeri görünmek arasında geçiş yap, diğer oyuncuları kasten karıştır.",
     color: "bg-red-500",
-  },
-  mixed: {
-    name: "Karışık",
-    description: "Bazen cevaplarda AI yardımı alan bir insansın. Ne zaman otantik, ne zaman AI destekli olacağını seçebilirsin.",
-    strategy: "Hem insan otantikliğini hem AI cilalanırlığını stratejik kullan. Gerçek cevaplarla AI-geliştirilmiş olanları karıştır.",
-    color: "bg-purple-500",
   },
 };
 
@@ -122,17 +116,16 @@ export function getRoleDistribution(playerCount: number): Record<PlayerRole, num
     throw new Error(`Maximum ${GAME_CONFIG.MAX_PLAYERS} players allowed`);
   }
 
-  // Base distribution (for 8 players): 2 human, 2 ai_user, 2 troll, 2 mixed
+  // Base distribution (for 6 players): 2 human, 2 ai_user, 2 troll
   const baseDistribution = {
     human: 2,
     ai_user: 2,
     troll: 2,
-    mixed: 2,
   };
 
   // Add extra roles proportionally for more players
-  const extraPlayers = playerCount - 8;
-  const roles: PlayerRole[] = ['human', 'ai_user', 'troll', 'mixed'];
+  const extraPlayers = playerCount - 6;
+  const roles: PlayerRole[] = ['human', 'ai_user', 'troll'];
   
   const distribution = { ...baseDistribution };
   
@@ -149,7 +142,7 @@ export function assignRoles(playerIds: string[]): Record<string, PlayerRole> {
   const assignments: Record<string, PlayerRole> = {};
   
   // All available roles
-  const roles: PlayerRole[] = ['human', 'ai_user', 'troll', 'mixed'];
+  const roles: PlayerRole[] = ['human', 'ai_user', 'troll'];
   
   // Better random assignment with shuffle
   const shuffledRoles = [...roles];

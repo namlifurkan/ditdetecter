@@ -316,7 +316,7 @@ export default function LobbyComponent({ gameState, playerId }: LobbyComponentPr
           <div className="grid md:grid-cols-3 gap-4 text-sm text-gray-300">
             <div className="text-center">
               <div className="text-2xl mb-2">📝</div>
-              <div className="font-medium text-white">3 Rounds</div>
+              <div className="font-medium text-white">8 Rounds</div>
               <div>Creative writing challenges</div>
             </div>
             <div className="text-center">

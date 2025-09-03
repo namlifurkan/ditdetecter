@@ -268,7 +268,7 @@ export default function VotingComponent({ gameState, submissions, timeLeft, play
                         What role do you think {player.name} is?
                       </h4>
                       <div className="grid grid-cols-2 gap-3">
-                        {(['human', 'ai_user', 'troll', 'mixed'] as PlayerRole[]).map(role => {
+                        {(['human', 'ai_user', 'troll'] as PlayerRole[]).map(role => {
                           const roleInfo = ROLE_DESCRIPTIONS[role];
                           const isSelected = currentVote?.predictedRole === role;
                           
@@ -290,7 +290,6 @@ export default function VotingComponent({ gameState, submissions, timeLeft, play
                                     {role === 'human' && '👤 Pure human behavior'}
                                     {role === 'ai_user' && '🤖 Pure AI responses'}
                                     {role === 'troll' && '👹 Causing chaos'}
-                                    {role === 'mixed' && '🎭 Strategic blend'}
                                   </div>
                                 </div>
                                 {isSelected && (

@@ -86,7 +86,6 @@ export default function RoleRevealComponent({ playerRole, timeLeft }: RoleReveal
                   {playerRole === 'human' && '👤'}
                   {playerRole === 'ai_user' && '🤖'}
                   {playerRole === 'troll' && '👹'}
-                  {playerRole === 'mixed' && '🎭'}
                 </div>
                 <h1 className="text-4xl font-bold mb-2">{roleInfo.name}</h1>
                 <p className="text-xl opacity-90">{roleInfo.description}</p>
@@ -144,14 +143,6 @@ export default function RoleRevealComponent({ playerRole, timeLeft }: RoleReveal
                         <p>• Çok insansı ve çok AI benzeri görünmek arasında geçiş yap</p>
                         <p>• Gerçek kimliğin hakkında kafa karışıklığı yarat</p>
                         <p>• Oyun kuralları içinde kalarak diğerlerini yanılt</p>
-                      </>
-                    )}
-                    {playerRole === 'mixed' && (
-                      <>
-                        <p>• Ne zaman otantik, ne zaman AI destekli olacağını stratejik seç</p>
-                        <p>• Bazı cevaplar için AI cilaları, diğerleri için ham insanlık kullan</p>
-                        <p>• Kategorize edilmesi zor, inandırıcı bir karışım yarat</p>
-                        <p>• Diğerlerini gerçek doğan hakkında tahmin ettir</p>
                       </>
                     )}
                   </div>

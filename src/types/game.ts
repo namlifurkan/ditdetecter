@@ -1,4 +1,4 @@
-export type PlayerRole = 'human' | 'ai_user' | 'troll' | 'mixed';
+export type PlayerRole = 'human' | 'ai_user' | 'troll';
 
 export type GamePhase = 'lobby' | 'role_reveal' | 'round1' | 'round2' | 'round3' | 'round4' | 'round5' | 'round6' | 'round7' | 'round8' | 'voting' | 'results' | 'finished';
 

@@ -351,7 +351,6 @@ class GameManager extends EventEmitter {
         human: 0,
         ai_user: 0,
         troll: 0,
-        mixed: 0,
       };
 
       votesForPlayer.forEach(vote => {
@@ -412,7 +411,6 @@ class GameManager extends EventEmitter {
         human: 0,
         ai_user: 0,
         troll: 0,
-        mixed: 0,
       };
 
       this.votes
