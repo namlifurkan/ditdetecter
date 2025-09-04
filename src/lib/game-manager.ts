@@ -337,8 +337,14 @@ class GameManager extends EventEmitter {
 
       this.gameState.currentPhase = 'role_reveal';
       this.gameState.startedAt = new Date();
-      const config = getGameConfig();
-      this.setPhaseTimer(config.ROLE_REVEAL_DURATION * 60 * 1000); // Convert to milliseconds
+      
+      // Only set automatic timer if no admin is present (for manual control)
+      if (!this.gameState.adminPlayer) {
+        const config = getGameConfig();
+        this.setPhaseTimer(config.ROLE_REVEAL_DURATION * 60 * 1000); // Convert to milliseconds
+      } else {
+        console.log('Admin present - skipping automatic phase timer for manual control');
+      }
 
       this.emitGameEvent('game_started', {
         gameState: this.getPublicGameState(),
@@ -381,20 +387,24 @@ class GameManager extends EventEmitter {
       // Update phase
       this.gameState.currentPhase = nextPhase;
 
-      // Set appropriate timer for the new phase
-      let duration = 0;
-      if (nextPhase.startsWith('round')) {
-        duration = this.gameState.roundDuration * 60 * 1000;
-      } else if (nextPhase === 'voting') {
-        duration = this.gameState.votingDuration * 60 * 1000;
-      } else if (nextPhase === 'results') {
-        duration = 10 * 1000; // 10 seconds to view results
-      } else if (nextPhase === 'finished') {
-        duration = 0; // No timer for finished phase
-      }
+      // Set appropriate timer for the new phase (only if no admin for manual control)
+      if (!this.gameState.adminPlayer) {
+        let duration = 0;
+        if (nextPhase.startsWith('round')) {
+          duration = this.gameState.roundDuration * 60 * 1000;
+        } else if (nextPhase === 'voting') {
+          duration = this.gameState.votingDuration * 60 * 1000;
+        } else if (nextPhase === 'results') {
+          duration = 10 * 1000; // 10 seconds to view results
+        } else if (nextPhase === 'finished') {
+          duration = 0; // No timer for finished phase
+        }
 
-      if (duration > 0) {
-        this.setPhaseTimer(duration);
+        if (duration > 0) {
+          this.setPhaseTimer(duration);
+        }
+      } else {
+        console.log(`Admin present - skipping automatic timer for ${nextPhase}, awaiting manual control`);
       }
 
       // Prepare event data based on phase
