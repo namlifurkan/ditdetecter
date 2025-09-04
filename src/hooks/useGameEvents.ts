@@ -169,13 +169,15 @@ export function useGameEvents() {
         let result;
         try {
           const responseText = await response.text();
+          console.log('Polling raw response:', responseText.substring(0, 200)); // Debug log
+          
           if (!responseText.trim()) {
             throw new Error('Empty response from server');
           }
           result = JSON.parse(responseText);
         } catch (parseError) {
           console.error('JSON parsing error in polling:', parseError);
-          throw new Error('Invalid server response format');
+          throw new Error('Invalid server response format in polling');
         }
         
         if (result.success) {

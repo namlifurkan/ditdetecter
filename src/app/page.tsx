@@ -39,15 +39,19 @@ export default function Home() {
       }
 
       let result;
+      let responseText = '';
       try {
-        const responseText = await response.text();
+        responseText = await response.text();
+        console.log('Raw response:', responseText); // Debug log
+        
         if (!responseText.trim()) {
           throw new Error('Empty response from server');
         }
         result = JSON.parse(responseText);
       } catch (parseError) {
         console.error('JSON parsing error:', parseError);
-        throw new Error('Invalid server response format');
+        console.error('Response text that failed to parse:', responseText);
+        throw new Error(`Invalid server response format. Response: ${responseText?.substring(0, 200)}...`);
       }
 
       if (result.success) {
