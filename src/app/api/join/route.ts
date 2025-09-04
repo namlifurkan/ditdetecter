@@ -4,10 +4,20 @@ import { JoinGameRequest, ApiResponse } from '@/types/game';
 
 export async function POST(request: NextRequest) {
   console.log('JOIN API: Request received');
+  console.log('JOIN API: Headers:', Object.fromEntries(request.headers.entries()));
+  console.log('JOIN API: URL:', request.url);
+  console.log('JOIN API: Method:', request.method);
   
   try {
+    // Add timeout for parsing request body
+    const timeoutId = setTimeout(() => {
+      throw new Error('Request parsing timeout');
+    }, 10000);
+    
     const body: JoinGameRequest = await request.json();
-    console.log('JOIN API: Body parsed:', body);
+    clearTimeout(timeoutId);
+    
+    console.log('JOIN API: Body parsed successfully:', body);
     
     if (!body.name || body.name.trim().length === 0) {
       return NextResponse.json<ApiResponse>({
@@ -54,7 +64,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Store player ID in a cookie for session management
-    const response = NextResponse.json<ApiResponse>({
+    const responseData = {
       success: true,
       data: {
         player: {
@@ -67,7 +77,12 @@ export async function POST(request: NextRequest) {
         playerRole: player.role,
       },
       timestamp: new Date(),
-    });
+    };
+    
+    console.log('JOIN API: About to send response:', JSON.stringify(responseData).length + ' bytes');
+    console.log('JOIN API: Response data preview:', JSON.stringify(responseData).substring(0, 200) + '...');
+    
+    const response = NextResponse.json<ApiResponse>(responseData);
 
     response.cookies.set('player_id', player.id, {
       httpOnly: false, // Allow client-side access
@@ -78,13 +93,22 @@ export async function POST(request: NextRequest) {
       domain: process.env.NODE_ENV === 'production' ? undefined : 'localhost', // Let browser handle domain in production
     });
 
+    console.log('JOIN API: Response created successfully, sending...');
     return response;
   } catch (error) {
-    console.error('Error joining game:', error);
-    return NextResponse.json<ApiResponse>({
+    console.error('JOIN API: Error caught:', error);
+    console.error('JOIN API: Error stack:', error instanceof Error ? error.stack : 'No stack trace');
+    console.error('JOIN API: Error name:', error instanceof Error ? error.name : 'Unknown');
+    console.error('JOIN API: Error message:', error instanceof Error ? error.message : String(error));
+    
+    const errorResponse = {
       success: false,
-      error: 'Internal server error',
+      error: error instanceof Error ? error.message : 'Internal server error',
       timestamp: new Date(),
-    }, { status: 500 });
+    };
+    
+    console.log('JOIN API: Sending error response:', JSON.stringify(errorResponse));
+    
+    return NextResponse.json<ApiResponse>(errorResponse, { status: 500 });
   }
 }
