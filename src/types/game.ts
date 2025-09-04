@@ -128,7 +128,7 @@ export interface VoteRequest {
 
 // Admin actions
 export interface AdminAction {
-  action: 'start_game' | 'advance_phase' | 'skip_phase' | 'assign_role' | 'kick_player' | 'reset_game' | 'set_timer' | 'destroy_game';
+  action: 'start_game' | 'advance_phase' | 'skip_phase' | 'assign_role' | 'kick_player' | 'reset_game' | 'set_timer' | 'destroy_game' | 'reset_network' | 'clear_compression' | 'cleanup_sessions' | 'simulate_error' | 'export_system_data';
   playerId?: string;
   role?: PlayerRole;
   duration?: number; // in seconds

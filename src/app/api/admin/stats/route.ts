@@ -73,7 +73,7 @@ function getErrorStats() {
 function getPerformanceStats() {
   return {
     uptime: process.uptime ? Math.round(process.uptime()) : Math.round(Math.random() * 3600),
-    loadAverage: process.platform === 'win32' ? [0, 0, 0] : (process.loadavg ? process.loadavg() : [0.5, 0.3, 0.1]),
+    loadAverage: process.platform === 'win32' ? [0, 0, 0] : (typeof process.loadavg === 'function' ? process.loadavg() : [0.5, 0.3, 0.1]),
     nodeVersion: process.version || 'v20.0.0',
     platform: process.platform || 'unknown'
   };
