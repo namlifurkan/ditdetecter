@@ -33,7 +33,22 @@ export default function Home() {
       
       clearTimeout(timeoutId);
 
-      const result = await response.json();
+      // Check if response is OK before trying to parse JSON
+      if (!response.ok) {
+        throw new Error(`Server error: ${response.status} ${response.statusText}`);
+      }
+
+      let result;
+      try {
+        const responseText = await response.text();
+        if (!responseText.trim()) {
+          throw new Error('Empty response from server');
+        }
+        result = JSON.parse(responseText);
+      } catch (parseError) {
+        console.error('JSON parsing error:', parseError);
+        throw new Error('Invalid server response format');
+      }
 
       if (result.success) {
         // Store initial game data in sessionStorage for immediate use

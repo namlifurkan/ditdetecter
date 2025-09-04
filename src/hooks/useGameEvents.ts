@@ -164,7 +164,19 @@ export function useGameEvents() {
         );
         
         const responseTime = Date.now() - start;
-        const result = await response.json();
+        
+        // Safe JSON parsing
+        let result;
+        try {
+          const responseText = await response.text();
+          if (!responseText.trim()) {
+            throw new Error('Empty response from server');
+          }
+          result = JSON.parse(responseText);
+        } catch (parseError) {
+          console.error('JSON parsing error in polling:', parseError);
+          throw new Error('Invalid server response format');
+        }
         
         if (result.success) {
           setGameData(result.data);
