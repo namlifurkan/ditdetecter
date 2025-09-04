@@ -31,10 +31,8 @@ export async function GET(request: NextRequest) {
               serverTime: Date.now()
             };
 
-            // Optimize event data for bandwidth
-            const optimized = CompressionUtils.optimizeSSEEvent(event, eventDataWithMeta);
-            
-            const eventData = `event: ${optimized.event}\ndata: ${optimized.data}\n\n`;
+            // TEMPORARY: Skip SSE compression to debug decoding issues
+            const eventData = `event: ${event}\ndata: ${JSON.stringify(eventDataWithMeta)}\n\n`;
             controller.enqueue(encoder.encode(eventData));
             
             // Reset heartbeat failures on successful send

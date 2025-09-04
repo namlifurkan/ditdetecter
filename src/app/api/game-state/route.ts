@@ -70,25 +70,13 @@ export async function GET(request: NextRequest) {
       connectionQuality = 'excellent';
     }
 
-    // Apply adaptive compression based on connection quality
-    const compressedData = CompressionUtils.filterByConnectionQuality(responseData, connectionQuality);
-    
-    // Calculate and log compression ratio
-    const originalSize = JSON.stringify(responseData).length;
-    const compressedSize = JSON.stringify(compressedData).length;
-    const compressionRatio = CompressionUtils.getCompressionRatio(responseData, compressedData);
-    
-    console.log(`Game state compression: ${originalSize} → ${compressedSize} bytes (${compressionRatio.toFixed(1)}% reduction)`);
+    // TEMPORARY: Skip compression to debug decoding issues
+    console.log(`Game state response (uncompressed): ${JSON.stringify(responseData).length} bytes`);
 
     return NextResponse.json<ApiResponse>({
       success: true,
-      data: compressedData,
+      data: responseData,
       timestamp: new Date(),
-    }, {
-      headers: {
-        'Content-Encoding': acceptEncoding.includes('gzip') ? 'gzip' : 'identity',
-        'Vary': 'Accept-Encoding'
-      }
     });
   } catch (error) {
     console.error('Error getting game state:', error);
