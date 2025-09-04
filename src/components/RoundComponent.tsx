@@ -62,7 +62,12 @@ export default function RoundComponent({ roundNumber, timeLeft, playerId }: Roun
 
     // Online submission
     try {
-      console.log('Submitting:', { roundNumber, content: content.trim() });
+      console.log('SUBMIT: Starting submission:', { roundNumber, content: content.trim().substring(0, 50) + '...' });
+      
+      // Add timeout for submission
+      const timeoutId = setTimeout(() => {
+        throw new Error('Submission timeout after 15 seconds');
+      }, 15000);
       
       const response = await fetch('/api/submit', {
         method: 'POST',
@@ -74,9 +79,17 @@ export default function RoundComponent({ roundNumber, timeLeft, playerId }: Roun
           content: content.trim(),
         }),
       });
+      
+      clearTimeout(timeoutId);
+      console.log('SUBMIT: Got response:', response.status, response.statusText);
+      
+      if (!response.ok) {
+        console.error('SUBMIT: Response not OK:', response.status, response.statusText);
+        throw new Error(`Server error: ${response.status} ${response.statusText}`);
+      }
 
       const result = await response.json();
-      console.log('Submission result:', result);
+      console.log('SUBMIT: Parsed result:', result);
 
       if (result.success) {
         setHasSubmitted(true);
@@ -84,8 +97,13 @@ export default function RoundComponent({ roundNumber, timeLeft, playerId }: Roun
         setError(result.error || 'Failed to submit');
       }
     } catch (error) {
+      console.error('SUBMIT: Error caught:', error);
+      console.error('SUBMIT: Error type:', error instanceof Error ? error.name : typeof error);
+      console.error('SUBMIT: Error message:', error instanceof Error ? error.message : String(error));
+      
       // If network error, try offline mode
       if (!isConnected) {
+        console.log('SUBMIT: No connection, saving offline');
         submitOffline(playerId, {
           roundNumber,
           answer: content.trim(),
@@ -94,9 +112,12 @@ export default function RoundComponent({ roundNumber, timeLeft, playerId }: Roun
         setOfflineSubmitted(true);
         setError('Connection lost. Your answer has been saved and will be submitted when connection is restored.');
       } else {
-        setError('Failed to connect to server');
+        console.error('SUBMIT: Connected but failed:', error);
+        const errorMsg = error instanceof Error ? error.message : 'Failed to connect to server';
+        setError(errorMsg);
       }
     } finally {
+      console.log('SUBMIT: Finally block - setting isSubmitting to false');
       setIsSubmitting(false);
     }
   }, [roundNumber, content, isOverLimit, hasSubmitted, offlineSubmitted, isOffline, isConnected, submitOffline, playerId]);

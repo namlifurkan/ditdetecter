@@ -4,9 +4,16 @@ import { SubmissionRequest, ApiResponse } from '@/types/game';
 import { ROUND_CONFIGS } from '@/lib/game-config';
 
 export async function POST(request: NextRequest) {
+  console.log('SUBMIT API: Request received');
+  console.log('SUBMIT API: Headers:', Object.fromEntries(request.headers.entries()));
+  console.log('SUBMIT API: URL:', request.url);
+  
   try {
     const playerId = request.cookies.get('player_id')?.value;
+    console.log('SUBMIT API: Player ID from cookie:', playerId);
+    
     if (!playerId) {
+      console.log('SUBMIT API: No player ID found in cookies');
       return NextResponse.json<ApiResponse>({
         success: false,
         error: 'Player not found. Please rejoin the game.',
@@ -14,7 +21,15 @@ export async function POST(request: NextRequest) {
       }, { status: 401 });
     }
 
+    // Add timeout for parsing request body
+    const timeoutId = setTimeout(() => {
+      throw new Error('Request parsing timeout');
+    }, 10000);
+    
     const body: SubmissionRequest = await request.json();
+    clearTimeout(timeoutId);
+    
+    console.log('SUBMIT API: Body parsed successfully:', { roundNumber: body.roundNumber, contentLength: body.content?.length });
     
     if (!body.content || body.content.trim().length === 0) {
       return NextResponse.json<ApiResponse>({
@@ -73,7 +88,9 @@ export async function POST(request: NextRequest) {
       }, { status: 404 });
     }
 
+    console.log('SUBMIT API: Attempting to add submission...');
     const success = gameManager.addSubmission(playerId, body.roundNumber, body.content.trim());
+    console.log('SUBMIT API: Add submission result:', success);
     
     if (!success) {
       const gameState = gameManager.getGameState();
@@ -105,20 +122,31 @@ export async function POST(request: NextRequest) {
       }, { status: 409 });
     }
 
-    return NextResponse.json<ApiResponse>({
+    console.log('SUBMIT API: Submission successful, sending response...');
+    const responseData = {
       success: true,
       data: {
         message: 'Submission received successfully',
         roundNumber: body.roundNumber,
       },
       timestamp: new Date(),
-    });
+    };
+    
+    console.log('SUBMIT API: Response data prepared:', responseData);
+    return NextResponse.json<ApiResponse>(responseData);
   } catch (error) {
-    console.error('Error submitting:', error);
-    return NextResponse.json<ApiResponse>({
+    console.error('SUBMIT API: Error caught:', error);
+    console.error('SUBMIT API: Error stack:', error instanceof Error ? error.stack : 'No stack trace');
+    console.error('SUBMIT API: Error name:', error instanceof Error ? error.name : 'Unknown');
+    console.error('SUBMIT API: Error message:', error instanceof Error ? error.message : String(error));
+    
+    const errorResponse = {
       success: false,
-      error: 'Internal server error',
+      error: error instanceof Error ? error.message : 'Internal server error',
       timestamp: new Date(),
-    }, { status: 500 });
+    };
+    
+    console.log('SUBMIT API: Sending error response:', JSON.stringify(errorResponse));
+    return NextResponse.json<ApiResponse>(errorResponse, { status: 500 });
   }
 }
