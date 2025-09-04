@@ -25,28 +25,21 @@ export default function RoleRevealPage() {
       return;
     }
 
-    // Check if game is in correct phase
-    if (gameData?.gameState?.currentPhase !== 'role_reveal') {
-      // Game not in role reveal phase anymore, redirect appropriately
-      if (gameData?.gameState?.currentPhase === 'lobby') {
-        router.push('/');
-      } else {
-        router.push('/game');
-      }
-      return;
-    }
-
     // Set player role from gameData
     if (gameData?.playerRole) {
       setPlayerRole(gameData.playerRole);
     }
   }, [gameData, router]);
 
-  // Auto-redirect to game when role reveal phase ends
+  // Auto-redirect to game when role reveal phase ends (with delay to prevent loops)
   useEffect(() => {
     if (gameData?.gameState?.currentPhase && 
         gameData.gameState.currentPhase !== 'role_reveal') {
-      router.push('/game');
+      // Add a delay to prevent immediate redirect loops
+      const timer = setTimeout(() => {
+        router.push('/game');
+      }, 1000);
+      return () => clearTimeout(timer);
     }
   }, [gameData?.gameState?.currentPhase, router]);
 
@@ -68,18 +61,8 @@ export default function RoleRevealPage() {
     );
   }
 
-  if (gameData.gameState.currentPhase !== 'role_reveal') {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-8 border border-white/20">
-          <div className="text-center">
-            <div className="text-4xl mb-4">⏳</div>
-            <p className="text-white text-xl">Redirecting...</p>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  // Show role reveal regardless of phase to prevent redirect loops
+  // The useEffect above will handle redirecting when needed
 
   return <RoleRevealComponent playerRole={playerRole} timeLeft={timeLeft} />;
 }
