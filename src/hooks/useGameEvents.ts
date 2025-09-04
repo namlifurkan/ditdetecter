@@ -288,7 +288,7 @@ export function useGameEvents() {
       };
 
       eventSource.onerror = (event) => {
-        console.error('EventSource error:', event);
+        console.warn('EventSource connection lost, switching to polling mode');
         setIsConnected(false);
         
         // Check if we're offline
@@ -310,6 +310,11 @@ export function useGameEvents() {
           }
           return;
         }
+        
+        // Immediately start polling as fallback (Vercel SSE issues)
+        console.log('Starting polling mode due to SSE connection issues');
+        startPolling();
+        setError('Connection switched to polling mode for better reliability.');
         
         if (reconnectAttempts.current < maxReconnectAttempts) {
           reconnectAttempts.current++;

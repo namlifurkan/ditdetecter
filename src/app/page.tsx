@@ -18,13 +18,20 @@ export default function Home() {
     setError(null);
 
     try {
+      // Add timeout for better error handling
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
+      
       const response = await fetch('/api/join', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ name: name.trim() }),
+        signal: controller.signal
       });
+      
+      clearTimeout(timeoutId);
 
       const result = await response.json();
 
@@ -54,7 +61,18 @@ export default function Home() {
         setError(result.error || 'Failed to join game');
       }
     } catch (error) {
-      setError('Failed to connect to server');
+      console.error('Join game error:', error);
+      if (error instanceof Error) {
+        if (error.name === 'AbortError') {
+          setError('Connection timeout - please try again');
+        } else if (error.message.includes('fetch')) {
+          setError('Network error - check your internet connection');
+        } else {
+          setError(`Connection failed: ${error.message}`);
+        }
+      } else {
+        setError('Failed to connect to server - please try again');
+      }
     } finally {
       setIsJoining(false);
     }
