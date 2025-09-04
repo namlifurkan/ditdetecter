@@ -159,10 +159,20 @@ export default function GamePage() {
 
   // Handle admin status client-side
   useEffect(() => {
+    console.log('ADMIN CHECK: currentPlayer:', currentPlayer);
+    console.log('ADMIN CHECK: playerId:', playerId);
+    console.log('ADMIN CHECK: gameData?.gameState.adminPlayer:', gameData?.gameState.adminPlayer);
+    console.log('ADMIN CHECK: gameData?.gameState.players:', gameData?.gameState.players);
+    
     if (currentPlayer) {
+      console.log('ADMIN CHECK: currentPlayer.isAdmin:', currentPlayer.isAdmin);
       setIsAdmin(currentPlayer.isAdmin === true);
+      console.log('ADMIN CHECK: setIsAdmin called with:', currentPlayer.isAdmin === true);
+    } else {
+      console.log('ADMIN CHECK: No current player found');
+      setIsAdmin(false);
     }
-  }, [currentPlayer]);
+  }, [currentPlayer, playerId, gameData]);
 
   // Initialize anti-cheat system - only on client side
   useEffect(() => {

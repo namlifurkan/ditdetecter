@@ -91,7 +91,12 @@ export default function AdminControls({ isAdmin, gamePhase }: AdminControlsProps
     console.log('Admin console capture initialized');
   };
 
-  if (!mounted || !isAdmin) return null;
+  console.log('ADMIN CONTROLS: mounted:', mounted, 'isAdmin:', isAdmin, 'gamePhase:', gamePhase);
+
+  if (!mounted || !isAdmin) {
+    console.log('ADMIN CONTROLS: Not rendering - mounted:', mounted, 'isAdmin:', isAdmin);
+    return null;
+  }
 
   const adminAdvancePhase = async () => {
     try {
