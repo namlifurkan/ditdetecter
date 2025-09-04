@@ -35,6 +35,8 @@ export default function Home() {
 
       // Check if response is OK before trying to parse JSON
       if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Server error response:', errorText);
         throw new Error(`Server error: ${response.status} ${response.statusText}`);
       }
 
@@ -45,7 +47,8 @@ export default function Home() {
         console.log('Raw response:', responseText); // Debug log
         
         if (!responseText.trim()) {
-          throw new Error('Empty response from server');
+          console.warn('Empty response received, this indicates a server function crash');
+          throw new Error('Server function failed - please try again in a few seconds');
         }
         result = JSON.parse(responseText);
       } catch (parseError) {
@@ -64,18 +67,9 @@ export default function Home() {
           }));
         }
         
-        // Redirect based on game phase
-        const currentPhase = result.data.gameState.currentPhase;
-        if (currentPhase === 'role_reveal') {
-          router.push('/role-reveal');
-        } else if (currentPhase === 'lobby') {
-          // Stay on lobby if still in lobby phase
-          // Don't redirect anywhere, just update UI
-          return;
-        } else {
-          // For rounds, voting, results phases
-          router.push('/game');
-        }
+        // Redirect to game page after successful join
+        console.log('Join successful, redirecting to game page');
+        router.push('/game');
       } else {
         setError(result.error || 'Failed to join game');
       }

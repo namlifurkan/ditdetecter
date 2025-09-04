@@ -3,8 +3,11 @@ import { getGameManager } from '@/lib/game-manager';
 import { JoinGameRequest, ApiResponse } from '@/types/game';
 
 export async function POST(request: NextRequest) {
+  console.log('JOIN API: Request received');
+  
   try {
     const body: JoinGameRequest = await request.json();
+    console.log('JOIN API: Body parsed:', body);
     
     if (!body.name || body.name.trim().length === 0) {
       return NextResponse.json<ApiResponse>({
