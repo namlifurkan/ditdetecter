@@ -806,7 +806,7 @@ class GameManager extends EventEmitter {
     if (this.gameState.currentPhase.startsWith('round')) {
       const roundConfig = getRoundConfigByPhase(this.gameState.currentPhase);
       if (roundConfig) {
-        publicState.currentRound = roundConfig;
+        (publicState as any).currentRound = roundConfig;
       }
     }
     return publicState;

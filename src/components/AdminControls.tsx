@@ -86,11 +86,16 @@ export default function AdminControls({ isAdmin, gamePhase }: AdminControlsProps
 
   // Capture console logs for debugging
   const captureConsoleLogs = () => {
-    const originalConsole = { ...console };
+    const originalConsole = {
+      log: console.log,
+      warn: console.warn,
+      error: console.error,
+      info: console.info
+    };
     
     ['log', 'warn', 'error', 'info'].forEach(level => {
       (console as any)[level] = (...args: any[]) => {
-        originalConsole[level as keyof Console](...args);
+        (originalConsole as any)[level](...args);
         
         setConsoleLogs(prev => {
           const newLog = {
