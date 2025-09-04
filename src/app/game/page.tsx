@@ -10,6 +10,7 @@ import NetworkMonitor from '@/components/NetworkMonitor';
 import AntiCheat from '@/lib/anti-cheat';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import dynamic from 'next/dynamic';
 
 function getCookie(name: string): string | null {
   if (typeof document === 'undefined') return null;
@@ -287,12 +288,17 @@ export default function GamePage() {
         );
         
       case 'role_reveal':
-        // Redirect to dedicated role reveal page
-        if (mounted) {
-          router.push('/role-reveal');
-          return null;
-        }
-        return null;
+        // Handle role reveal directly in game page to prevent redirect loops
+        const RoleRevealComponent = dynamic(() => import('@/components/RoleRevealComponent'), {
+          loading: () => <div className="text-white">Loading role reveal...</div>
+        });
+        
+        return (
+          <RoleRevealComponent
+            playerRole={gameData.playerRole}
+            timeLeft={gameData.timeLeft || 0}
+          />
+        );
         
       case 'round1':
       case 'round2':
