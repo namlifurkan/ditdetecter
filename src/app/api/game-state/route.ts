@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getGameManager } from '@/lib/game-manager';
 import { ApiResponse } from '@/types/game';
+import { CompressionUtils } from '@/lib/compression-utils';
 
 export async function GET(request: NextRequest) {
   try {
@@ -51,14 +52,43 @@ export async function GET(request: NextRequest) {
       };
     }
 
+    const responseData = {
+      gameState: publicGameState,
+      playerRole: playerRole,
+      ...additionalData,
+    };
+
+    // Get connection quality from headers for adaptive compression
+    const userAgent = request.headers.get('user-agent') || '';
+    const acceptEncoding = request.headers.get('accept-encoding') || '';
+    
+    // Determine connection quality (simplified heuristic)
+    let connectionQuality: 'excellent' | 'good' | 'poor' | 'critical' = 'good';
+    if (userAgent.toLowerCase().includes('mobile') && !acceptEncoding.includes('br')) {
+      connectionQuality = 'poor';
+    } else if (acceptEncoding.includes('br') && acceptEncoding.includes('gzip')) {
+      connectionQuality = 'excellent';
+    }
+
+    // Apply adaptive compression based on connection quality
+    const compressedData = CompressionUtils.filterByConnectionQuality(responseData, connectionQuality);
+    
+    // Calculate and log compression ratio
+    const originalSize = JSON.stringify(responseData).length;
+    const compressedSize = JSON.stringify(compressedData).length;
+    const compressionRatio = CompressionUtils.getCompressionRatio(responseData, compressedData);
+    
+    console.log(`Game state compression: ${originalSize} → ${compressedSize} bytes (${compressionRatio.toFixed(1)}% reduction)`);
+
     return NextResponse.json<ApiResponse>({
       success: true,
-      data: {
-        gameState: publicGameState,
-        playerRole: playerRole,
-        ...additionalData,
-      },
+      data: compressedData,
       timestamp: new Date(),
+    }, {
+      headers: {
+        'Content-Encoding': acceptEncoding.includes('gzip') ? 'gzip' : 'identity',
+        'Vary': 'Accept-Encoding'
+      }
     });
   } catch (error) {
     console.error('Error getting game state:', error);

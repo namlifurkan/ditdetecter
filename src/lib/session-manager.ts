@@ -8,6 +8,15 @@ interface SessionData {
   joinedAt: number;
   lastSeen: number;
   gameState?: GameState;
+  // Enhanced persistence data
+  connectionHistory: Array<{
+    connected: number;
+    disconnected?: number;
+    reason?: string;
+  }>;
+  totalConnections: number;
+  version: number; // For data migration
+  checksum: string; // Data integrity verification
 }
 
 interface RoomData {
@@ -17,6 +26,17 @@ interface RoomData {
   sessions: Map<string, SessionData>;
   gameState: GameState | null;
   adminSession?: string;
+  // Enhanced persistence data
+  backup: {
+    gameState: GameState | null;
+    sessionBackup: Map<string, SessionData>;
+    lastBackup: number;
+  } | null;
+  version: number;
+  integrity: {
+    checksum: string;
+    lastVerified: number;
+  };
 }
 
 class SessionManager {
@@ -29,9 +49,83 @@ class SessionManager {
   private readonly SESSION_TIMEOUT = 30 * 60 * 1000; // 30 minutes
   private readonly ROOM_TIMEOUT = 60 * 60 * 1000; // 1 hour
   private readonly CLEANUP_INTERVAL = 5 * 60 * 1000; // 5 minutes
+  private readonly BACKUP_INTERVAL = 2 * 60 * 1000; // 2 minutes
+  private readonly INTEGRITY_CHECK_INTERVAL = 10 * 60 * 1000; // 10 minutes
+  private readonly SESSION_VERSION = 1;
+  
+  // Enhanced persistence
+  private backupTimer: NodeJS.Timeout | null = null;
+  private integrityTimer: NodeJS.Timeout | null = null;
 
   constructor() {
     this.startCleanupTimer();
+    this.startBackupTimer();
+    this.startIntegrityTimer();
+  }
+
+  // Generate checksum for data integrity
+  private generateChecksum(data: any): string {
+    const str = JSON.stringify(data, (key, value) => {
+      if (value instanceof Map) {
+        return Array.from(value.entries());
+      }
+      return value;
+    });
+    
+    // Simple hash function (in production, use crypto.createHash)
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      const char = str.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // Convert to 32-bit integer
+    }
+    return hash.toString(36);
+  }
+
+  // Verify data integrity
+  private verifyIntegrity(room: RoomData): boolean {
+    const currentChecksum = this.generateChecksum({
+      sessions: room.sessions,
+      gameState: room.gameState
+    });
+    return currentChecksum === room.integrity.checksum;
+  }
+
+  // Create backup of room data
+  private createBackup(room: RoomData): void {
+    room.backup = {
+      gameState: room.gameState ? { ...room.gameState } : null,
+      sessionBackup: new Map(room.sessions),
+      lastBackup: Date.now()
+    };
+    console.log(`Created backup for room ${room.id}`);
+  }
+
+  // Restore from backup if integrity check fails
+  private restoreFromBackup(room: RoomData): boolean {
+    if (!room.backup) return false;
+    
+    try {
+      room.sessions = new Map(room.backup.sessionBackup);
+      room.gameState = room.backup.gameState ? { ...room.backup.gameState } : null;
+      this.updateRoomIntegrity(room);
+      console.log(`Restored room ${room.id} from backup`);
+      return true;
+    } catch (error) {
+      console.error(`Failed to restore room ${room.id} from backup:`, error);
+      return false;
+    }
+  }
+
+  // Update room integrity data
+  private updateRoomIntegrity(room: RoomData): void {
+    room.integrity = {
+      checksum: this.generateChecksum({
+        sessions: room.sessions,
+        gameState: room.gameState
+      }),
+      lastVerified: Date.now()
+    };
   }
 
   static getInstance(): SessionManager {
@@ -50,13 +144,33 @@ class SessionManager {
         lastActivity: Date.now(),
         sessions: new Map(),
         gameState: null,
+        backup: null,
+        version: this.SESSION_VERSION,
+        integrity: {
+          checksum: '',
+          lastVerified: Date.now()
+        }
       };
+      this.updateRoomIntegrity(room);
       this.rooms.set(roomId, room);
       console.log(`Created new room: ${roomId}`);
     }
 
     const room = this.rooms.get(roomId)!;
     room.lastActivity = Date.now();
+    
+    // Verify integrity
+    if (!this.verifyIntegrity(room)) {
+      console.warn(`Integrity check failed for room ${roomId}, attempting restore...`);
+      if (!this.restoreFromBackup(room)) {
+        console.error(`Failed to restore room ${roomId}, recreating...`);
+        // If backup restore fails, recreate the room
+        room.sessions.clear();
+        room.gameState = null;
+        this.updateRoomIntegrity(room);
+      }
+    }
+    
     return room;
   }
 
@@ -77,7 +191,20 @@ class SessionManager {
       session.lastSeen = Date.now();
       session.playerName = playerName; // Update name in case it changed
       session.isAdmin = isAdmin;
-      console.log(`Restored session for player: ${playerName} (${playerId})`);
+      session.totalConnections++;
+      
+      // Add to connection history
+      const lastConnection = session.connectionHistory[session.connectionHistory.length - 1];
+      if (!lastConnection || lastConnection.disconnected) {
+        session.connectionHistory.push({
+          connected: Date.now()
+        });
+      }
+      
+      // Update session checksum
+      session.checksum = this.generateChecksum(session);
+      
+      console.log(`Restored session for player: ${playerName} (${playerId}), connections: ${session.totalConnections}`);
     } else {
       // Create new session
       session = {
@@ -86,7 +213,17 @@ class SessionManager {
         isAdmin,
         joinedAt: Date.now(),
         lastSeen: Date.now(),
+        connectionHistory: [{
+          connected: Date.now()
+        }],
+        totalConnections: 1,
+        version: this.SESSION_VERSION,
+        checksum: ''
       };
+      
+      // Generate initial checksum
+      session.checksum = this.generateChecksum(session);
+      
       room.sessions.set(playerId, session);
       this.playerSessions.set(playerId, roomId);
       
@@ -98,6 +235,8 @@ class SessionManager {
     }
 
     room.lastActivity = Date.now();
+    this.updateRoomIntegrity(room);
+    
     return session;
   }
 
@@ -284,6 +423,48 @@ class SessionManager {
     }, this.CLEANUP_INTERVAL);
   }
 
+  private startBackupTimer(): void {
+    this.backupTimer = setInterval(() => {
+      this.performBackup();
+    }, this.BACKUP_INTERVAL);
+  }
+
+  private startIntegrityTimer(): void {
+    this.integrityTimer = setInterval(() => {
+      this.performIntegrityCheck();
+    }, this.INTEGRITY_CHECK_INTERVAL);
+  }
+
+  private performBackup(): void {
+    for (const room of this.rooms.values()) {
+      if (room.sessions.size > 0 || room.gameState) {
+        this.createBackup(room);
+      }
+    }
+  }
+
+  private performIntegrityCheck(): void {
+    let corruptedRooms = 0;
+    let restoredRooms = 0;
+
+    for (const [roomId, room] of this.rooms.entries()) {
+      if (!this.verifyIntegrity(room)) {
+        corruptedRooms++;
+        console.warn(`Integrity check failed for room ${roomId}`);
+        
+        if (this.restoreFromBackup(room)) {
+          restoredRooms++;
+        }
+      } else {
+        room.integrity.lastVerified = Date.now();
+      }
+    }
+
+    if (corruptedRooms > 0) {
+      console.log(`Integrity check complete: ${corruptedRooms} corrupted rooms, ${restoredRooms} restored`);
+    }
+  }
+
   // Get room stats
   getRoomStats(roomId: string = 'main'): {
     totalSessions: number;
@@ -321,8 +502,20 @@ class SessionManager {
       clearInterval(this.sessionCleanupInterval);
       this.sessionCleanupInterval = null;
     }
+    
+    if (this.backupTimer) {
+      clearInterval(this.backupTimer);
+      this.backupTimer = null;
+    }
+    
+    if (this.integrityTimer) {
+      clearInterval(this.integrityTimer);
+      this.integrityTimer = null;
+    }
+    
     this.rooms.clear();
     this.playerSessions.clear();
+    console.log('SessionManager destroyed');
   }
 }
 

@@ -197,3 +197,15 @@ export function assignRoles(playerIds: string[]): Record<string, PlayerRole> {
   
   return assignments;
 }
+
+// Get round configuration by round number
+export function getRoundConfig(roundNumber: number): RoundConfig | null {
+  return ROUND_CONFIGS.find(config => config.roundNumber === roundNumber) || null;
+}
+
+// Get round configuration by phase name (e.g., "round1" -> round 1)
+export function getRoundConfigByPhase(phase: string): RoundConfig | null {
+  if (!phase.startsWith('round')) return null;
+  const roundNumber = parseInt(phase.replace('round', ''));
+  return getRoundConfig(roundNumber);
+}

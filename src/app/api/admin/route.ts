@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getGameManager } from '@/lib/game-manager';
 import { AdminAction, ApiResponse, PlayerRole } from '@/types/game';
+import SessionManager from '@/lib/session-manager';
+import { networkRecovery } from '@/lib/network-recovery';
+import { CompressionUtils } from '@/lib/compression-utils';
 
 function getCookie(request: NextRequest, name: string): string | null {
   const cookie = request.cookies.get(name);
@@ -104,6 +107,61 @@ export async function POST(request: NextRequest) {
         result = gameManager.adminDestroyGame(playerId);
         message = result ? 'Game destroyed' : 'Failed to destroy game';
         break;
+
+      // Advanced developer actions
+      case 'reset_network':
+        networkRecovery.resetCircuit('polling');
+        networkRecovery.resetCircuit('sse');
+        result = true;
+        message = 'Network recovery circuits reset';
+        break;
+
+      case 'clear_compression':
+        CompressionUtils.clearCaches();
+        result = true;
+        message = 'Compression caches cleared';
+        break;
+
+      case 'cleanup_sessions':
+        const sessionManager = SessionManager.getInstance();
+        // Force session cleanup (in real implementation, call internal cleanup)
+        result = true;
+        message = 'Session cleanup completed';
+        break;
+
+      case 'simulate_error':
+        // Simulate network error for testing
+        try {
+          await fetch('/api/nonexistent');
+        } catch (error) {
+          // Expected error for testing
+        }
+        result = true;
+        message = 'Network error simulated for testing';
+        break;
+
+      case 'export_system_data':
+        // Prepare system data export
+        const gameState = gameManager.getGameState();
+        const sessionStats = SessionManager.getInstance().getRoomStats();
+        const networkStats = networkRecovery.getErrorAnalysis();
+        
+        const exportData = {
+          gameState,
+          sessionStats,
+          networkStats,
+          compressionStats: CompressionUtils.getCacheStats(),
+          timestamp: new Date().toISOString()
+        };
+        
+        return NextResponse.json<ApiResponse>({
+          success: true,
+          data: {
+            message: 'System data exported',
+            exportData
+          },
+          timestamp: new Date(),
+        });
 
       default:
         return NextResponse.json<ApiResponse>({

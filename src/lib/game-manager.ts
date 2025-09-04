@@ -1,5 +1,5 @@
 import { GameState, Player, Submission, Vote, GameEvent, PlayerRole, VotingResults, PlayerScore, GameResults } from '@/types/game';
-import { assignRoles, POINTS_CONFIG } from './game-config';
+import { assignRoles, POINTS_CONFIG, getRoundConfigByPhase } from './game-config';
 import { getGameConfig, assignTestRoles, TEST_CONFIG } from './test-config';
 import { EventEmitter } from 'events';
 import SessionManager from './session-manager';
@@ -796,11 +796,20 @@ class GameManager extends EventEmitter {
     return { ...this.gameState };
   }
 
-  getPublicGameState(): Omit<GameState, 'players'> & { players: Omit<Player, 'role'>[] } {
-    return {
+  getPublicGameState(): Omit<GameState, 'players'> & { players: Omit<Player, 'role'>[], currentRound?: any } {
+    const publicState = {
       ...this.gameState,
       players: this.gameState.players.map(({ role, ...player }) => player),
     };
+
+    // Add current round configuration if in a round phase
+    if (this.gameState.currentPhase.startsWith('round')) {
+      const roundConfig = getRoundConfigByPhase(this.gameState.currentPhase);
+      if (roundConfig) {
+        publicState.currentRound = roundConfig;
+      }
+    }
+    return publicState;
   }
 
   getPlayerRoleAssignments(): Record<string, PlayerRole> {

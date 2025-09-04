@@ -2,11 +2,11 @@
 
 import { useGameEvents } from '@/hooks/useGameEvents';
 import LobbyComponent from '@/components/LobbyComponent';
-import RoleRevealComponent from '@/components/RoleRevealComponent';
 import RoundComponent from '@/components/RoundComponent';
 import VotingComponent from '@/components/VotingComponent';
 import ResultsComponent from '@/components/ResultsComponent';
 import AdminControls from '@/components/AdminControls';
+import NetworkMonitor from '@/components/NetworkMonitor';
 import AntiCheat from '@/lib/anti-cheat';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
@@ -24,7 +24,15 @@ function getCookie(name: string): string | null {
 }
 
 export default function GamePage() {
-  const { gameData, isConnected, isOffline, error } = useGameEvents();
+  const { 
+    gameData, 
+    isConnected, 
+    isOffline, 
+    error, 
+    connectionQuality, 
+    latency, 
+    networkStats 
+  } = useGameEvents();
   const router = useRouter();
   const [playerId, setPlayerId] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -279,12 +287,12 @@ export default function GamePage() {
         );
         
       case 'role_reveal':
-        return (
-          <RoleRevealComponent
-            playerRole={gameData.playerRole}
-            timeLeft={gameData.timeLeft || 0}
-          />
-        );
+        // Redirect to dedicated role reveal page
+        if (mounted) {
+          router.push('/role-reveal');
+          return null;
+        }
+        return null;
         
       case 'round1':
       case 'round2':
@@ -345,6 +353,15 @@ export default function GamePage() {
           gamePhase={gameData.gameState.currentPhase} 
         />
       )}
+      {/* Network Monitor - shows detailed connection health */}
+      <NetworkMonitor
+        connectionQuality={connectionQuality}
+        latency={latency}
+        isConnected={isConnected}
+        isOffline={isOffline}
+        networkStats={networkStats}
+        compact={true}
+      />
     </div>
   );
 }

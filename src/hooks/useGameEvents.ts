@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { GameEvent, GameState, Player, PlayerRole } from '@/types/game';
 import { OfflineGameManager } from '@/lib/offline-game-manager';
+import { networkRecovery } from '@/lib/network-recovery';
 
 interface GameEventData {
   gameState: Omit<GameState, 'players'> & { players: Omit<Player, 'role'>[] };
@@ -23,6 +24,71 @@ export function useGameEvents() {
   const offlineManager = useRef<OfflineGameManager | null>(null);
   const pollingInterval = useRef<NodeJS.Timeout | null>(null);
   const [isPolling, setIsPolling] = useState(false);
+  
+  // Network quality monitoring
+  const [connectionQuality, setConnectionQuality] = useState<'excellent' | 'good' | 'poor' | 'critical'>('good');
+  const [latency, setLatency] = useState<number>(0);
+  const networkStatsRef = useRef({
+    lastHeartbeat: Date.now(),
+    heartbeatFailures: 0,
+    avgLatency: 0,
+    connectionId: null as string | null,
+    reconnectCount: 0
+  });
+  
+  // Adaptive polling intervals based on network quality
+  const getPollingInterval = useCallback(() => {
+    switch (connectionQuality) {
+      case 'excellent': return 2000;
+      case 'good': return 3000;
+      case 'poor': return 5000;
+      case 'critical': return 8000;
+      default: return 3000;
+    }
+  }, [connectionQuality]);
+
+  // Network quality assessment
+  const assessNetworkQuality = useCallback((currentLatency: number, failures: number) => {
+    let quality: 'excellent' | 'good' | 'poor' | 'critical' = 'good';
+    
+    if (failures === 0 && currentLatency < 100) {
+      quality = 'excellent';
+    } else if (failures <= 1 && currentLatency < 500) {
+      quality = 'good';
+    } else if (failures <= 3 && currentLatency < 2000) {
+      quality = 'poor';
+    } else {
+      quality = 'critical';
+    }
+    
+    if (quality !== connectionQuality) {
+      console.log(`Network quality changed: ${connectionQuality} → ${quality} (latency: ${currentLatency}ms, failures: ${failures})`);
+      setConnectionQuality(quality);
+    }
+  }, [connectionQuality]);
+
+  // Measure connection latency
+  const measureLatency = useCallback(async () => {
+    const start = Date.now();
+    try {
+      const response = await fetch('/api/game-state', {
+        method: 'HEAD',
+        cache: 'no-cache'
+      });
+      const roundTripTime = Date.now() - start;
+      
+      // Update average latency (exponential moving average)
+      networkStatsRef.current.avgLatency = networkStatsRef.current.avgLatency === 0 
+        ? roundTripTime 
+        : (networkStatsRef.current.avgLatency * 0.7) + (roundTripTime * 0.3);
+      
+      setLatency(Math.round(networkStatsRef.current.avgLatency));
+      return roundTripTime;
+    } catch (error) {
+      console.error('Latency measurement failed:', error);
+      return 2000; // Assume high latency on error
+    }
+  }, []);
 
   // Save game data to localStorage for offline mode
   const saveOfflineData = useCallback((data: GameEventData) => {
@@ -67,37 +133,109 @@ export function useGameEvents() {
     }
   }, []);
 
-  // Fallback polling mechanism for when SSE fails
+  // Enhanced adaptive polling mechanism
   const startPolling = useCallback(() => {
     if (pollingInterval.current) return; // Already polling
     
-    console.log('Starting fallback polling');
+    console.log(`Starting adaptive polling (quality: ${connectionQuality})`);
     setIsPolling(true);
     
-    pollingInterval.current = setInterval(async () => {
+    const poll = async () => {
       try {
-        const response = await fetch('/api/game-state');
-        if (response.ok) {
-          const result = await response.json();
-          if (result.success) {
-            setGameData(result.data);
-            setError(null);
-            saveOfflineData(result.data);
-          }
+        const start = Date.now();
+        
+        // Use network recovery with circuit breaker
+        const response = await networkRecovery.executeWithCircuitBreaker(
+          'polling',
+          async () => {
+            const response = await fetch('/api/game-state', {
+              cache: 'no-cache',
+              signal: AbortSignal.timeout(5000) // 5 second timeout
+            });
+            
+            if (!response.ok) {
+              throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            
+            return response;
+          },
+          3, // failure threshold
+          30000 // recovery timeout (30 seconds)
+        );
+        
+        const responseTime = Date.now() - start;
+        const result = await response.json();
+        
+        if (result.success) {
+          setGameData(result.data);
+          setError(null);
+          saveOfflineData(result.data);
+          
+          // Update network stats
+          networkStatsRef.current.avgLatency = networkStatsRef.current.avgLatency === 0 
+            ? responseTime 
+            : (networkStatsRef.current.avgLatency * 0.8) + (responseTime * 0.2);
+          
+          setLatency(Math.round(networkStatsRef.current.avgLatency));
+          networkStatsRef.current.heartbeatFailures = Math.max(0, networkStatsRef.current.heartbeatFailures - 1);
         }
+        
+        // Assess network quality
+        assessNetworkQuality(networkStatsRef.current.avgLatency, networkStatsRef.current.heartbeatFailures);
+        
       } catch (error) {
         console.error('Polling error:', error);
-        // Don't update error state during polling to avoid UI flicker
+        networkStatsRef.current.heartbeatFailures++;
+        
+        // Check if circuit breaker is open
+        const circuitStatus = networkRecovery.getCircuitStatus('polling');
+        if (circuitStatus?.state === 'open') {
+          console.warn('Polling circuit breaker is open, switching to offline mode');
+          setError('Connection temporarily blocked due to repeated failures');
+          
+          // Try to use offline data
+          const offlineData = loadOfflineData();
+          if (offlineData) {
+            setIsOffline(true);
+            setGameData(offlineData);
+          }
+        }
+        
+        assessNetworkQuality(networkStatsRef.current.avgLatency, networkStatsRef.current.heartbeatFailures);
       }
-    }, 3000); // Poll every 3 seconds
-  }, [saveOfflineData]);
+    };
+    
+    // Initial poll
+    poll();
+    
+    // Set up adaptive interval
+    pollingInterval.current = setInterval(poll, getPollingInterval());
+    
+    // Adjust polling interval based on network quality changes
+    const intervalAdjuster = setInterval(() => {
+      if (pollingInterval.current) {
+        clearInterval(pollingInterval.current);
+        pollingInterval.current = setInterval(poll, getPollingInterval());
+      }
+    }, 10000); // Check every 10 seconds
+    
+    // Store interval adjuster for cleanup
+    (pollingInterval.current as any).adjuster = intervalAdjuster;
+    
+  }, [saveOfflineData, connectionQuality, getPollingInterval, assessNetworkQuality]);
 
   const stopPolling = useCallback(() => {
     if (pollingInterval.current) {
       clearInterval(pollingInterval.current);
+      
+      // Clear interval adjuster if exists
+      if ((pollingInterval.current as any).adjuster) {
+        clearInterval((pollingInterval.current as any).adjuster);
+      }
+      
       pollingInterval.current = null;
       setIsPolling(false);
-      console.log('Stopped fallback polling');
+      console.log('Stopped adaptive polling');
     }
   }, []);
 
@@ -174,13 +312,29 @@ export function useGameEvents() {
         }
         
         if (reconnectAttempts.current < maxReconnectAttempts) {
-          const delay = Math.pow(2, reconnectAttempts.current) * 1000; // Exponential backoff
           reconnectAttempts.current++;
           
-          reconnectTimeoutRef.current = setTimeout(() => {
-            console.log(`Attempting to reconnect (${reconnectAttempts.current}/${maxReconnectAttempts})...`);
-            connect();
-          }, delay);
+          // Use network recovery for intelligent reconnection
+          networkRecovery.executeWithRecovery(
+            () => new Promise<void>((resolve) => {
+              console.log(`Attempting to reconnect (${reconnectAttempts.current}/${maxReconnectAttempts})...`);
+              connect();
+              resolve();
+            }),
+            {
+              strategy: networkRecovery.createStrategy('realtime'),
+              onRetry: (attempt) => {
+                console.log(`SSE reconnection attempt ${attempt}`);
+                networkStatsRef.current.reconnectCount++;
+              },
+              onFailure: () => {
+                console.error('SSE reconnection failed, starting fallback polling');
+                startPolling();
+              }
+            }
+          ).catch(() => {
+            // Handled by onFailure callback
+          });
         } else {
           // Start polling as fallback instead of giving up
           console.log('SSE failed, starting fallback polling');
@@ -357,7 +511,41 @@ export function useGameEvents() {
       });
 
       eventSource.addEventListener('heartbeat', (event) => {
-        // Keep alive - no action needed
+        try {
+          const heartbeatData = JSON.parse(event.data);
+          const now = Date.now();
+          
+          // Store connection ID for tracking
+          if (heartbeatData.connectionId && networkStatsRef.current.connectionId !== heartbeatData.connectionId) {
+            networkStatsRef.current.connectionId = heartbeatData.connectionId;
+            console.log(`SSE Connection ID: ${heartbeatData.connectionId}`);
+          }
+          
+          // Calculate latency from server timestamp
+          if (heartbeatData.serverTime) {
+            const serverLatency = Math.abs(now - heartbeatData.serverTime);
+            networkStatsRef.current.avgLatency = networkStatsRef.current.avgLatency === 0 
+              ? serverLatency 
+              : (networkStatsRef.current.avgLatency * 0.8) + (serverLatency * 0.2);
+            
+            setLatency(Math.round(networkStatsRef.current.avgLatency));
+          }
+          
+          // Update heartbeat tracking
+          networkStatsRef.current.lastHeartbeat = now;
+          networkStatsRef.current.heartbeatFailures = Math.max(0, networkStatsRef.current.heartbeatFailures - 1);
+          
+          // Assess network quality
+          assessNetworkQuality(networkStatsRef.current.avgLatency, networkStatsRef.current.heartbeatFailures);
+          
+          // Log connection health if degraded
+          if (heartbeatData.connectionHealth === 'degraded') {
+            console.warn(`Server reports degraded connection health for ${heartbeatData.connectionId}`);
+          }
+          
+        } catch (error) {
+          console.error('Error parsing heartbeat:', error);
+        }
       });
 
       eventSource.addEventListener('game_destroyed', (event) => {
@@ -566,6 +754,15 @@ export function useGameEvents() {
     reconnect: connect,
     submitOffline,
     voteOffline,
+    // Network monitoring data
+    connectionQuality,
+    latency,
+    networkStats: {
+      reconnectCount: networkStatsRef.current.reconnectCount,
+      connectionId: networkStatsRef.current.connectionId,
+      avgLatency: networkStatsRef.current.avgLatency,
+      heartbeatFailures: networkStatsRef.current.heartbeatFailures
+    }
   };
 }
 

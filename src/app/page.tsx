@@ -38,8 +38,18 @@ export default function Home() {
           }));
         }
         
-        // Redirect to game page
-        router.push('/game');
+        // Redirect based on game phase
+        const currentPhase = result.data.gameState.currentPhase;
+        if (currentPhase === 'role_reveal') {
+          router.push('/role-reveal');
+        } else if (currentPhase === 'lobby') {
+          // Stay on lobby if still in lobby phase
+          // Don't redirect anywhere, just update UI
+          return;
+        } else {
+          // For rounds, voting, results phases
+          router.push('/game');
+        }
       } else {
         setError(result.error || 'Failed to join game');
       }
