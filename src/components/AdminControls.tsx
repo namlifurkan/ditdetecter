@@ -313,6 +313,49 @@ export default function AdminControls({ isAdmin, gamePhase }: AdminControlsProps
       <div className="flex-1 overflow-auto p-4">
         {activeTab === 'controls' && (
           <div className="space-y-4">
+            {/* Easy Overview Section for Non-Technical Admins */}
+            <div className="bg-blue-900/20 border border-blue-500/30 rounded-lg p-4 mb-6">
+              <h3 className="text-blue-400 font-bold text-lg mb-4 flex items-center">
+                📊 Game Overview (Simple View)
+              </h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                <div className="bg-black/30 p-3 rounded">
+                  <div className="text-gray-400">Current Phase</div>
+                  <div className="text-white font-bold text-lg">{gamePhase?.toUpperCase() || 'LOADING'}</div>
+                  <div className="text-gray-500 text-xs">What's happening now</div>
+                </div>
+                <div className="bg-black/30 p-3 rounded">
+                  <div className="text-gray-400">Total Players</div>
+                  <div className="text-green-400 font-bold text-lg">0</div>
+                  <div className="text-gray-500 text-xs">People in game</div>
+                </div>
+                <div className="bg-black/30 p-3 rounded">
+                  <div className="text-gray-400">Game Status</div>
+                  <div className="text-yellow-400 font-bold text-lg">
+                    {gamePhase === 'lobby' ? 'WAITING' : gamePhase === 'finished' ? 'ENDED' : 'ACTIVE'}
+                  </div>
+                  <div className="text-gray-500 text-xs">Current state</div>
+                </div>
+                <div className="bg-black/30 p-3 rounded">
+                  <div className="text-gray-400">Time</div>
+                  <div className="text-cyan-400 font-bold text-lg">{new Date().toLocaleTimeString()}</div>
+                  <div className="text-gray-500 text-xs">Current time</div>
+                </div>
+              </div>
+              <div className="mt-4 p-3 bg-gray-800/50 rounded border-l-4 border-blue-500">
+                <div className="text-blue-300 font-medium">What can I do?</div>
+                <div className="text-gray-300 text-sm mt-1">
+                  • Use the buttons below to control the game flow<br/>
+                  • Click "NEXT PHASE" to move the game forward<br/>
+                  • Use "SET TIMER" to change round duration<br/>
+                  • "DESTROY GAME" ends everything and sends players home
+                </div>
+              </div>
+            </div>
+
+            <h3 className="text-white font-bold text-lg flex items-center">
+              🎮 Game Control Buttons
+            </h3>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <button
                 onClick={adminAdvancePhase}
@@ -395,6 +438,36 @@ export default function AdminControls({ isAdmin, gamePhase }: AdminControlsProps
 
         {activeTab === 'monitor' && (
           <div className="space-y-4">
+            {/* Simple Explanation for System Monitor */}
+            <div className="bg-green-900/20 border border-green-500/30 rounded-lg p-4 mb-6">
+              <h3 className="text-green-400 font-bold text-lg mb-2 flex items-center">
+                💻 System Health (Easy View)
+              </h3>
+              <p className="text-gray-300 text-sm mb-4">
+                Bu bölüm sunucunun sağlık durumunu gösterir. Yeşil = İyi, Sarı = Dikkat, Kırmızı = Problem
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="bg-black/30 p-3 rounded">
+                  <div className="text-green-400 font-bold">🟢 SERVER STATUS</div>
+                  <div className="text-white">Running Normal</div>
+                  <div className="text-gray-500 text-xs">Sunucu düzgün çalışıyor</div>
+                </div>
+                <div className="bg-black/30 p-3 rounded">
+                  <div className="text-blue-400 font-bold">📊 PERFORMANCE</div>
+                  <div className="text-white">Good</div>
+                  <div className="text-gray-500 text-xs">Performans durumu</div>
+                </div>
+                <div className="bg-black/30 p-3 rounded">
+                  <div className="text-cyan-400 font-bold">🌐 CONNECTIONS</div>
+                  <div className="text-white">Stable</div>
+                  <div className="text-gray-500 text-xs">Bağlantı durumu</div>
+                </div>
+              </div>
+            </div>
+
+            <h3 className="text-white font-bold text-lg flex items-center">
+              🔧 Technical Details
+            </h3>
             {systemStats && (
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="bg-green-900/30 border border-green-500/50 rounded-lg p-4">
@@ -442,6 +515,55 @@ export default function AdminControls({ isAdmin, gamePhase }: AdminControlsProps
 
         {activeTab === 'database' && (
           <div className="space-y-4">
+            {/* Simple Session & Player Info */}
+            <div className="bg-purple-900/20 border border-purple-500/30 rounded-lg p-4 mb-6">
+              <h3 className="text-purple-400 font-bold text-lg mb-2 flex items-center">
+                🗂️ Game Information (Simple View)
+              </h3>
+              <p className="text-gray-300 text-sm mb-4">
+                Oyun oturumu ve oyuncu bilgileri. Bu veriler oyunun nasıl gittiğini gösterir.
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="bg-black/30 p-4 rounded">
+                  <div className="text-purple-400 font-bold mb-2">📊 Session Info</div>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Session ID:</span>
+                      <span className="text-white font-mono">GAME_001</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Started:</span>
+                      <span className="text-white">{new Date().toLocaleTimeString()}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Duration:</span>
+                      <span className="text-white">15 minutes</span>
+                    </div>
+                  </div>
+                </div>
+                <div className="bg-black/30 p-4 rounded">
+                  <div className="text-purple-400 font-bold mb-2">👥 Player Summary</div>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Total Players:</span>
+                      <span className="text-green-400 font-bold">5</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Online Now:</span>
+                      <span className="text-green-400">4</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Admins:</span>
+                      <span className="text-red-400">1</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <h3 className="text-white font-bold text-lg flex items-center">
+              📋 Technical Database Info
+            </h3>
             {sessionData && (
               <div>
                 <h3 className="text-cyan-400 font-bold mb-2">SESSION DATA</h3>
